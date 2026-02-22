@@ -36,7 +36,17 @@
     /* !!! اصلاح مهم: حذف !important برای اینکه جاوااسکریپت بتواند آن را نمایش دهد !!! */
     #confirm-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 7000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
 
-    .confirm-box { background: var(--card-bg); width: 85%; max-width: 350px; padding: 25px; border-radius: 20px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3); animation: scaleIn 0.3s; }
+    .confirm-box {
+      background: var(--card-bg);
+      width: 90%;
+      max-width: 400px;
+      padding: 30px 25px;
+      border-radius: 32px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+      animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      border: 1px solid var(--border);
+    }
     @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     @keyframes zoomIn { from { transform: scale(0); } to { transform: scale(1); } }
 
@@ -192,7 +202,7 @@
 
     @media print {
       body { background: white !important; padding: 0 !important; margin: 0 !important; }
-      .header, .bottom-nav, .sidebar, .sidebar-overlay, .fab, .container, .modal, #confirm-modal, #lightbox { display: none !important; }
+      .header, .bottom-nav, .sidebar, .sidebar-overlay, .fab, .container, .modal, #confirm-modal, #lightbox, #prompt-modal { display: none !important; }
       #report-modal { display: block !important; position: static !important; background: white !important; padding: 0 !important; margin: 0 !important; visibility: visible !important; }
       .modal-box.report-card-modal { box-shadow: none !important; width: 100% !important; max-width: none !important; height: auto !important; margin: 0 !important; padding: 0 !important; border-radius: 0 !important; }
       .report-body { max-height: none !important; overflow: visible !important; padding: 30px !important; }
@@ -203,7 +213,28 @@
 </head>
 <body>
 
-  <div id="confirm-modal" style="display:none;"><div class="confirm-box"><h3 id="confirm-msg"></h3><div style="display:flex; gap:10px; margin-top:20px;" id="confirm-buttons"><button class="btn btn-green" id="confirm-yes">بله</button><button class="btn btn-red" id="confirm-no" onclick="closeConfirm()">خیر</button></div></div></div>
+  <div id="confirm-modal" class="modal" style="z-index: 7000;">
+    <div class="confirm-box">
+      <div id="confirm-icon" style="font-size: 3rem; margin-bottom: 15px; color: var(--primary);"><i class="fas fa-question-circle"></i></div>
+      <h3 id="confirm-msg" style="margin: 0; font-size: 1.2rem;"></h3>
+      <div style="display:flex; gap:10px; margin-top:25px;" id="confirm-buttons">
+        <button class="btn btn-green" id="confirm-yes" style="border-radius: 12px; padding: 12px;">بله، تایید</button>
+        <button class="btn btn-red" id="confirm-no" onclick="closeConfirm()" style="border-radius: 12px; padding: 12px; background: #94a3b8;">خیر، بازگشت</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="prompt-modal" class="modal" style="z-index: 8000;">
+    <div class="confirm-box">
+      <div style="font-size: 3rem; margin-bottom: 15px; color: var(--primary);"><i class="fas fa-edit"></i></div>
+      <h3 id="prompt-msg" style="margin: 0; font-size: 1.2rem;"></h3>
+      <input type="text" id="prompt-input" style="margin-top: 20px; text-align: center; font-size: 1.2rem; font-weight: bold; border-color: var(--primary);">
+      <div style="display:flex; gap:10px; margin-top:15px;">
+        <button class="btn btn-green" id="prompt-yes" style="border-radius: 12px; padding: 12px;">تایید</button>
+        <button class="btn btn-red" id="prompt-no" style="border-radius: 12px; padding: 12px; background: #94a3b8;">انصراف</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast-container" class="toast-container"></div>
 
@@ -522,6 +553,7 @@
   let DB={}, TEMP={}, chartInst=null, miChart=null, growthChart=null, classMIChart=null, currentStudent=null;
   let timerInterval=null, timerSec=0;
   let confirmCallback = null;
+  let promptCallback = null;
   let tempGroups = [];
 
   // --- سیستم هوشمند اعلان و پیام ---
@@ -535,23 +567,29 @@
       setTimeout(() => toast.remove(), 3000);
   }
 
-  function showAlert(msg, title = "پیام سیستم") {
+  function showAlert(msg, type = "info") {
+      const iconMap = { 'info': 'fa-info-circle', 'error': 'fa-exclamation-triangle', 'success': 'fa-check-circle' };
+      document.getElementById('confirm-icon').innerHTML = `<i class="fas ${iconMap[type] || 'fa-info-circle'}"></i>`;
       document.getElementById('confirm-msg').innerText = msg;
       document.getElementById('confirm-no').style.display = 'none';
       document.getElementById('confirm-yes').innerText = 'متوجه شدم';
+      document.getElementById('confirm-yes').className = 'btn btn-blue';
       const modal = document.getElementById('confirm-modal');
       modal.style.display = 'flex';
       confirmCallback = () => {
           document.getElementById('confirm-no').style.display = 'block';
-          document.getElementById('confirm-yes').innerText = 'بله';
+          document.getElementById('confirm-yes').innerText = 'بله، تایید';
+          document.getElementById('confirm-yes').className = 'btn btn-green';
       };
   }
 
   // --- سیستم مودال تایید ---
   function showConfirm(msg, callback) {
+      document.getElementById('confirm-icon').innerHTML = `<i class="fas fa-question-circle"></i>`;
       document.getElementById('confirm-msg').innerText = msg;
       document.getElementById('confirm-no').style.display = 'block';
-      document.getElementById('confirm-yes').innerText = 'بله';
+      document.getElementById('confirm-yes').innerText = 'بله، تایید';
+      document.getElementById('confirm-yes').className = 'btn btn-green';
       const modal = document.getElementById('confirm-modal');
       modal.style.display = 'flex';
       confirmCallback = callback;
@@ -566,16 +604,37 @@
       document.getElementById('confirm-modal').style.display = 'none';
   }
 
+  function showPrompt(msg, defaultValue, callback) {
+      document.getElementById('prompt-msg').innerText = msg;
+      const inp = document.getElementById('prompt-input');
+      inp.value = defaultValue || "";
+      const modal = document.getElementById('prompt-modal');
+      modal.style.display = 'flex';
+      inp.focus();
+      promptCallback = callback;
+  }
+
+  document.getElementById('prompt-yes').onclick = function() {
+      const val = document.getElementById('prompt-input').value;
+      document.getElementById('prompt-modal').style.display = 'none';
+      if(promptCallback) promptCallback(val);
+  };
+
+  document.getElementById('prompt-no').onclick = function() {
+      document.getElementById('prompt-modal').style.display = 'none';
+      if(promptCallback) promptCallback(null);
+  };
+
   // --- توابع کمکی برای دکمه‌ها ---
   function askDeletePlan(id, event) {
-      if(event) event.stopPropagation(); // جلوگیری از باز شدن آکاردئون
+      if(event) event.stopPropagation();
       showConfirm('آیا مطمئن هستید که می‌خواهید این طرح درس را حذف کنید؟', function() {
           delPlan(id);
       });
   }
 
   function editPlanClick(id, event) {
-      if(event) event.stopPropagation(); // جلوگیری از باز شدن آکاردئون
+      if(event) event.stopPropagation();
       editPlan(id);
   }
 
@@ -641,11 +700,10 @@
       try { renderSettings(); } catch(e) { console.error(e); }
       try { renderScoreList(); } catch(e) { console.error(e); }
       try { renderArchive('grouping'); } catch(e) { console.error(e); }
-      // Fetch Class MI
       google.script.run.withSuccessHandler(mi=>{ renderClassMI(mi); }).getClassMIData();
     }).withFailureHandler(e => {
         hideLoading();
-        showAlert("خطا در دریافت اطلاعات. لطفا اینترنت خود را چک کنید.\n" + e.message);
+        showAlert("خطا در دریافت اطلاعات. لطفا اینترنت خود را چک کنید.\n" + e.message, 'error');
     }).getAppData();
   }
 
@@ -654,17 +712,6 @@
     document.getElementById('top-student').innerText = DB.topStudent;
     if(typeof Chart !== 'undefined') {
         if(chartInst) chartInst.destroy();
-        const verticalLinePlugin = {
-          id: 'verticalLine',
-          afterDraw: (chart) => {
-            if (chart.tooltip?._active?.length) {
-              const x = chart.tooltip._active[0].element.x;
-              const yAxis = chart.scales.y;
-              const ctx = chart.ctx;
-              ctx.save(); ctx.beginPath(); ctx.moveTo(x, yAxis.top); ctx.lineTo(x, yAxis.bottom); ctx.lineWidth = 1; ctx.strokeStyle = '#4f46e5'; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.restore();
-            }
-          }
-        };
         chartInst = new Chart(document.getElementById('mainChart'), {
           type:'line',
           data:{labels:DB.trend.labels, datasets:[{label:'حضور %', data:DB.trend.data, borderColor:'#4f46e5', tension:0.35, fill:true, backgroundColor:'rgba(79,70,229,0.1)'}]},
@@ -682,8 +729,7 @@
               }
             },
             scales:{y:{beginAtZero:true, max:100}}
-          },
-          plugins: [verticalLinePlugin]
+          }
         });
     }
     let h = "";
@@ -731,31 +777,18 @@
     let h = "";
     if (DB.plans && DB.plans.length > 0) {
       DB.plans.forEach(p=>{
-        let mods = [];
-        try { mods = JSON.parse(p.modules||"[]"); } catch(e) {}
+        let mods = []; try { mods = JSON.parse(p.modules||"[]"); } catch(e) {}
         let mHtml = p.sin?`<div style="white-space:pre-wrap; background:#f1f5f9; padding:12px; border-radius:12px; font-size:0.9rem; margin-bottom:15px; line-height:1.6; border-right:5px solid #cbd5e1;">${p.sin}</div>`:"";
         let mainType = "other";
-
         mods.forEach(m=>{
-          let its = ""; (m.items||[]).forEach(it=>{ let cls=it.type=='buy'?'buy':'have'; let ic=it.type=='buy'?'🛒':'✅'; its+=`<span class="mat-chip ${cls}">${ic} ${it.name}</span>`; });
-          let typeClass = "";
-          if (m.type === 'game') { mainType = 'game'; typeClass = "color:#10b981"; }
-          else if (m.type === 'story') { mainType = 'story'; typeClass = "color:#eab308"; }
-          else if (m.type === 'yade_hazrat') { mainType = 'hazrat'; typeClass = "color:#3b82f6"; }
+          let its = ""; (m.items||[]).forEach(it=>{ its+=`<span class="mat-chip ${it.type}">${it.type=='buy'?'🛒':'✅'} ${it.name}</span>`; });
+          if (m.type === 'game') mainType = 'game';
+          else if (m.type === 'story') mainType = 'story';
+          else if (m.type === 'yade_hazrat') mainType = 'hazrat';
           let typeName = m.type === 'yade_hazrat' ? 'یاد حضرت' : (m.type === 'game' ? 'بازی' : (m.type === 'story' ? 'داستان' : (m.type === 'trip' ? 'اردو' : 'سایر')));
-          mHtml += `<div style="margin-top:12px; border-right:4px solid var(--primary); padding-right:12px;">
-             <b style="${typeClass}">${typeName}:</b> ${m.name}<br>
-             <div style="display:flex; flex-wrap:wrap; margin-top:5px;">${its}</div>
-          </div>`;
+          mHtml += `<div style="margin-top:12px; border-right:4px solid var(--primary); padding-right:12px;"><b>${typeName}:</b> ${m.name}<br><div style="display:flex; flex-wrap:wrap; margin-top:5px;">${its}</div></div>`;
         });
-
-        h += `<div class="plan-card ${mainType}" id="plan-${p.id}">
-          <div class="plan-header" onclick="this.parentElement.classList.toggle('open')"><div><b>${p.title}</b><br><small style="opacity:0.7;">📅 جلسه: ${toPersianNum(p.date)}</small></div><span>🔽</span></div>
-          <div class="plan-body">${mHtml}<div style="margin-top:20px; display:flex; gap:15px; border-top:1px solid var(--border); padding-top:12px;">
-            <button onclick="askDeletePlan('${p.id}', event)" style="color:#ef4444; background:none; border:none; cursor:pointer; font-weight:bold; font-size:16px; padding:10px;"><i class="fas fa-trash"></i> حذف</button>
-            <button onclick="editPlanClick('${p.id}', event)" style="color:var(--primary); background:none; border:none; cursor:pointer; font-weight:bold; font-size:16px; padding:10px;"><i class="fas fa-edit"></i> ویرایش</button>
-          </div></div>
-        </div>`;
+        h += `<div class="plan-card ${mainType}" id="plan-${p.id}"><div class="plan-header" onclick="this.parentElement.classList.toggle('open')"><div><b>${p.title}</b><br><small style="opacity:0.7;">📅 جلسه: ${toPersianNum(p.date)}</small></div><span>🔽</span></div><div class="plan-body">${mHtml}<div style="margin-top:20px; display:flex; gap:15px; border-top:1px solid var(--border); padding-top:12px;"><button onclick="askDeletePlan('${p.id}', event)" style="color:#ef4444; background:none; border:none; cursor:pointer; font-weight:bold; font-size:16px; padding:10px;"><i class="fas fa-trash"></i> حذف</button><button onclick="editPlanClick('${p.id}', event)" style="color:var(--primary); background:none; border:none; cursor:pointer; font-weight:bold; font-size:16px; padding:10px;"><i class="fas fa-edit"></i> ویرایش</button></div></div></div>`;
       });
     } else {
         h = "<p style='text-align:center; color:#888; padding:20px;'>هنوز طرح درسی ثبت نشده است.</p>";
@@ -773,8 +806,8 @@
     if(classMIChart) classMIChart.destroy();
     classMIChart = new Chart(document.getElementById('classMIChart'), {
       type: 'bar',
-      data: { labels: mi.labels, datasets: [{ label: 'میانگین کلاس', data: mi.averages, backgroundColor: '#818cf8' }] },
-      options: { indexAxis: 'y', plugins: { legend: { display: false } } }
+      data: { labels: mi.labels, datasets: [{ label: 'میانگین کلاس', data: mi.averages, backgroundColor: 'rgba(129, 140, 248, 0.8)', borderRadius: 8, borderWidth: 1, borderColor: '#4f46e5' }] },
+      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, grid: { display: false } }, y: { ticks: { font: { size: 10 } } } } }
     });
   }
 
@@ -782,37 +815,52 @@
     showLoading(); currentStudent = n;
     google.script.run.withSuccessHandler(d=>{
       hideLoading();
-      if(!d.success) return showAlert(d.msg);
+      if(!d.success) return showAlert(d.msg, 'error');
       const i = d.info;
       document.getElementById('sp-img').src=i.displayImage;
-      document.getElementById('sp-name').innerText = (i.name && i.name !== "undefined") ? i.name : "";
+      document.getElementById('sp-name').innerText = i.name || "";
       document.getElementById('sp-score').innerText=toPersianNum(i.score)+" امتیاز";
       document.getElementById('sp-input-img').value=i.image;
       document.getElementById('sp-bio').value=i.bio || "";
       document.getElementById('sp-parent-note').value=i.parentNote || "";
-
       const cont = document.getElementById('phones-container'); cont.innerHTML = "";
       let ps = []; try { ps = JSON.parse(i.phone || "[]"); } catch(e) { if(i.phone) ps.push({label:"تلفن", number:i.phone}); }
       if(ps.length === 0) addPhoneField(); else ps.forEach(p => addPhoneField(p.label, p.number));
-
       document.getElementById('sp-dob').value=i.dob || "";
       document.getElementById('sp-school').value=i.school || "";
       document.getElementById('sp-medical').value=i.medical || "";
       renderMIChart(d.mi.chart); renderMIAccordion(d.mi.config, n, d.mi.traitStates); renderFullHistory(d.fullHistory); renderGrowthChart(d.stats.growth);
       nav('single-profile');
-    }).withFailureHandler(e => { hideLoading(); showAlert("خطا در بارگذاری پروفایل: " + e.message); }).getFullStudentProfile(n);
+    }).withFailureHandler(e => { hideLoading(); showAlert("خطا در بارگذاری پروفایل: " + e.message, 'error'); }).getFullStudentProfile(n);
   }
 
   function addPhoneField(l="", n="") {
-    const div = document.createElement('div'); div.className="phone-item";
-    div.innerHTML = `<input type="text" placeholder="عنوان" value="${l}" style="flex:1;"><input type="text" placeholder="شماره" value="${n}" style="flex:1.5;"><span style="color:red; cursor:pointer;" onclick="this.parentElement.remove()">✕</span>`;
+    const div = document.createElement('div'); div.className="phone-item"; div.style.display="flex"; div.style.gap="10px"; div.style.marginBottom="10px";
+    div.innerHTML = `<input type="text" placeholder="عنوان" value="${l}" style="flex:1; margin:0;"><input type="text" placeholder="شماره" value="${n}" style="flex:1.5; margin:0;"><button class="btn btn-red" style="width:40px; padding:0; border-radius:12px;" onclick="this.parentElement.remove()">✕</button>`;
     document.getElementById('phones-container').appendChild(div);
   }
 
-  function chSt(n, e){ let v=e.value; let m=0; if(v=='Late'){ m=prompt("چند دقیقه تاخیر؟","15"); if(!m){ e.value='Present'; v='Present'; } } TEMP[n]={s:v, m:m}; e.style.backgroundColor=v=='Present'?'#dcfce7':(v=='Absent'?'#fee2e2':(v=='Late'?'#fef3c7':'#e0f2fe')); }
-  function markAllPresent(){ DB.students.forEach(s=>TEMP[s.name]={s:'Present',m:0}); renderAtt(); }
+  function chSt(n, e){
+    let v=e.value;
+    if(v=='Late'){
+      showPrompt("چند دقیقه تاخیر؟", "15", (m) => {
+        if(!m){ e.value='Present'; v='Present'; }
+        TEMP[n]={s:v, m:m||0};
+        e.style.backgroundColor=v=='Present'?'#dcfce7':(v=='Absent'?'#fee2e2':(v=='Late'?'#fef3c7':'#e0f2fe'));
+      });
+    } else {
+      TEMP[n]={s:v, m:0};
+      e.style.backgroundColor=v=='Present'?'#dcfce7':(v=='Absent'?'#fee2e2':(v=='Late'?'#fef3c7':'#e0f2fe'));
+    }
+  }
+
+  function manualScore(n){
+    showPrompt(`امتیاز برای ${n}:`, "1", (p) => {
+      if(p) google.script.run.withSuccessHandler(fetchData).addManualScore(n,p);
+    });
+  }
+
   function submitData(){ if(!DB.students || DB.students.length===0) return showAlert("دانش‌آموزی ثبت نشده است."); showLoading(); const recs=DB.students.map(s=>({name:s.name, status:TEMP[s.name].s, min:TEMP[s.name].m})); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); fetchData(); }).submitAttendance({date:document.getElementById('att-date').value, records:recs}); }
-  function manualScore(n){ let p=prompt(`امتیاز برای ${n}:`,"1"); if(p) google.script.run.withSuccessHandler(fetchData).addManualScore(n,p); }
   function saveNote(){ const d=document.getElementById('note-date').value; const t=document.getElementById('note-text').value; if(!t)return; showLoading(); google.script.run.withSuccessHandler(r=>{showToast(r.msg); document.getElementById('note-text').value=""; fetchData();}).saveNote(d,t); }
   function filterNotes(t){ document.querySelectorAll('.note-item').forEach(i=> i.style.display=i.innerText.includes(t)?'block':'none'); }
   function filterAtt(t){ document.querySelectorAll('#att-list .dash-item').forEach(i=> i.style.display=i.innerText.includes(t)?'flex':'none'); }
@@ -829,25 +877,20 @@
 
   function editPlan(id){
     const p = DB.plans.find(x => x.id == id);
-    if(!p) return showAlert("خطا: طرح درس پیدا نشد.");
+    if(!p) return showAlert("خطا: طرح درس پیدا نشد.", 'error');
     document.getElementById('p-id').value=p.id;
     document.getElementById('p-date').value=p.date;
     document.getElementById('p-title').value=p.title;
     document.getElementById('p-sin').value=p.sin||"";
     document.getElementById('p-prio').value=p.priority;
     document.getElementById('modules-container').innerHTML="";
-    let ms = []; try { ms = JSON.parse(p.modules||"[]"); } catch(e) { console.error("Plan parse error", e); }
+    let ms = []; try { ms = JSON.parse(p.modules||"[]"); } catch(e) {}
     ms.forEach(m=> {
       let type = m.type;
-      if(type === 'بازی') type = 'game';
-      if(type === 'داستان') type = 'story';
-      if(type === 'اردو') type = 'trip';
-      if(type === 'سایر') type = 'other';
-      if(type === 'یاد حضرت') type = 'yade_hazrat';
+      if(type === 'بازی') type = 'game'; else if(type === 'داستان') type = 'story'; else if(type === 'اردو') type = 'trip'; else if(type === 'یاد حضرت') type = 'yade_hazrat'; else type = 'other';
       addModule(type, m.name, m.items||[], m.desc);
     });
     document.getElementById('plan-modal').style.display='flex';
-    setTimeout(()=>document.querySelectorAll('#plan-modal textarea').forEach(autoGrow), 250);
   }
 
   function addModule(type, name="", items=[], desc=""){
@@ -859,18 +902,17 @@
       <input type="hidden" class="m-type" value="${type}">
       <input class="m-name" placeholder="عنوان این ماژول" value="${name}">
       <div style="display:flex; gap:8px;"><input class="m-new-mat" placeholder="نام وسیله لازم..." style="margin:0;"><button class="btn btn-green" style="width:45px; padding:0;" onclick="addItemToMod(this,'${id}','have')">✅</button><button class="btn btn-red" style="width:45px; padding:0;" onclick="addItemToMod(this,'${id}','buy')">🛒</button></div>
-      <div class="m-tags-container" id="tags-${id}" style="display:flex; flex-wrap:wrap; margin-top:8px;">${items.map(it=>`<span class="mat-chip ${it.type}" data-type="${it.type}"><span>${it.type=='buy'?'🛒':'✅'} ${it.name}</span><span style="cursor:pointer; margin-right:6px;" onclick="this.parentElement.remove()">×</span></span>`).join('')}</div>
+      <div class="m-tags-container" id="tags-${id}" style="display:flex; flex-wrap:wrap; margin-top:8px;">${items.map(it=>`<span class="mat-chip ${it.type}"><span>${it.type=='buy'?'🛒':'✅'} ${it.name}</span><span style="cursor:pointer; margin-right:6px;" onclick="this.parentElement.remove()">×</span></span>`).join('')}</div>
       <textarea class="m-desc" placeholder="توضیحات و نکات تکمیلی این بخش..." oninput="autoGrow(this)" style="margin-top:10px;">${desc}</textarea>`;
     c.appendChild(d);
-    setTimeout(()=>autoGrow(d.querySelector('.m-desc')), 100);
   }
 
-  function savePlan(id, date, title, priority, sin, modules) {
+  function savePlan() {
     const idVal=document.getElementById('p-id').value; const dVal=document.getElementById('p-date').value; const tVal=document.getElementById('p-title').value; const sVal=document.getElementById('p-sin').value; const prVal=document.getElementById('p-prio').value;
     if(!tVal) return showAlert("عنوان طرح درس اجباری است.");
     let mods = [];
     document.querySelectorAll('#modules-container > .mod-box-full').forEach(el=>{
-      let its = []; el.querySelectorAll('.mat-chip').forEach(c=> its.push({name: c.querySelector('span').innerText.substring(2).trim(), type: c.getAttribute('data-type')}));
+      let its = []; el.querySelectorAll('.mat-chip').forEach(c=> its.push({name: c.querySelector('span').innerText.substring(2).trim(), type: c.classList.contains('buy') ? 'buy' : 'have'}));
       mods.push({type: el.querySelector('.m-type').value, name: el.querySelector('.m-name').value, desc: el.querySelector('.m-desc').value, items: its});
     });
     showLoading(); google.script.run.withSuccessHandler(r=>{ showToast(r.msg); document.getElementById('plan-modal').style.display='none'; fetchData(); }).savePlan(idVal,dVal,tVal,prVal,sVal,JSON.stringify(mods));
@@ -884,100 +926,54 @@
     miChart = new Chart(ctx, {
       type:'bar',
       data:{labels:d.labels, datasets:[{label:'امتیاز هوش', data:d.data, backgroundColor:'#4f46e5', borderRadius: 5}]},
-      options:{
-        indexAxis: 'y',
-        maintainAspectRatio: false,
-        responsive: true,
-        plugins:{legend:{display:false}},
-        scales:{
-          x:{beginAtZero:true, grid:{display:false}},
-          y:{ticks:{autoSkip:false, font:{size:11}}}
-        }
-      }
+      options:{ indexAxis: 'y', maintainAspectRatio: false, responsive: true, plugins:{legend:{display:false}}, scales:{ x:{beginAtZero:true, grid:{display:false}}, y:{ticks:{autoSkip:false, font:{size:11}}} } }
     });
   }
+
   function renderMIAccordion(conf, name, traitStates){
     let h="";
     conf.forEach(c=>{
       let traitHtml = "";
       const allTraits = (c.pos || []).concat(c.neg || []);
-
       allTraits.forEach(t => {
         if(!t) return;
         let currentState = traitStates[c.type + "_" + t] || 0;
-
-        traitHtml += `<div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
-          <span style="font-size:0.9rem; flex:1;">${t}</span>
-          <div style="display:flex; gap:8px;">
-            <button class="btn ${currentState === 1 ? 'btn-green' : 'btn-outline'}"
-                    style="width:40px; height:40px; padding:0; border-radius:10px; border-color:#10b981; color:${currentState === 1 ? 'white' : '#10b981'}"
-                    onclick="logMI('${name}','${c.type}','${t}', ${currentState === 1 ? 0 : 1})">
-              <i class="fas fa-check"></i>
-            </button>
-            <button class="btn ${currentState === -1 ? 'btn-red' : 'btn-outline'}"
-                    style="width:40px; height:40px; padding:0; border-radius:10px; border-color:#ef4444; color:${currentState === -1 ? 'white' : '#ef4444'}"
-                    onclick="logMI('${name}','${c.type}','${t}', ${currentState === -1 ? 0 : -1})">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>
-        </div>`;
+        let traitTitle = t; let traitDesc = "";
+        if(t.includes(" (")) { const parts = t.split(" ("); traitTitle = parts[0]; traitDesc = parts[1].replace(")", ""); }
+        traitHtml += `<div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border);"><div style="flex:1; padding-left:10px;"><div style="font-size:0.95rem; font-weight:600;">${traitTitle}</div>${traitDesc ? `<div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${traitDesc}</div>` : ""}</div><div style="display:flex; gap:10px;"><button class="btn ${currentState === 1 ? 'btn-green' : 'btn-outline'}" style="width:42px; height:42px; padding:0; border-radius:12px; border-color:#10b981; color:${currentState === 1 ? 'white' : '#10b981'}; background:${currentState === 1 ? '#10b981' : 'transparent'}" onclick="logMI('${name}','${c.type}','${t}', ${currentState === 1 ? 0 : 1})"><i class="fas fa-check"></i></button><button class="btn ${currentState === -1 ? 'btn-red' : 'btn-outline'}" style="width:42px; height:42px; padding:0; border-radius:12px; border-color:#ef4444; color:${currentState === -1 ? 'white' : '#ef4444'}; background:${currentState === -1 ? '#ef4444' : 'transparent'}" onclick="logMI('${name}','${c.type}','${t}', ${currentState === -1 ? 0 : -1})"><i class="fas fa-times"></i></button></div></div>`;
       });
-
-      h += `<div class="card" style="padding:12px; margin-bottom:8px;">
-        <div style="font-weight:bold; cursor:pointer; display:flex; justify-content:space-between;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display=='block'?'none':'block'">
-          <span>${c.type}</span> <span>🔽</span>
-        </div>
-        <div style="display:none; padding-top:12px;">
-          <small style="color:#64748b; display:block; margin-bottom:12px;">${c.desc}</small>
-          ${traitHtml}
-        </div>
-      </div>`;
+      h += `<div class="card" style="padding:15px; margin-bottom:12px; border:1px solid var(--border);"><div style="font-weight:bold; cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-size:1.1rem;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display=='block'?'none':'block'"><span>${c.type}</span> <i class="fas fa-chevron-down" style="font-size:0.9rem; opacity:0.5;"></i></div><div style="display:none; padding-top:15px;"><div style="background:#f1f5f9; padding:12px; border-radius:12px; font-size:0.85rem; color:#475569; margin-bottom:15px; line-height:1.6; border-right:4px solid var(--primary);">${c.desc}</div>${traitHtml}</div></div>`;
     });
     document.getElementById('sp-mi-accordion').innerHTML = h;
   }
-  function logMI(n,t,b,s){
-    showLoading();
-    google.script.run.withSuccessHandler(()=>{
-      hideLoading();
-      showToast("بروزرسانی شد");
-      openProfile(n);
-    }).submitMILog(n,t,b,s);
-  }
+
+  function logMI(n,t,b,s){ showLoading(); google.script.run.withSuccessHandler(()=>{ hideLoading(); showToast("بروزرسانی شد"); openProfile(n); }).submitMILog(n,t,b,s); }
+
   function renderFullHistory(h){
-    if(!h || h.length === 0) {
-      document.getElementById('sp-mi-history').innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;"><i class="fas fa-history" style="font-size:2rem; display:block; margin-bottom:10px; opacity:0.3;"></i>هنوز فعالیتی ثبت نشده است.</div>`;
-      return;
-    }
+    if(!h || h.length === 0) { document.getElementById('sp-mi-history').innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;"><i class="fas fa-history" style="font-size:2rem; display:block; margin-bottom:10px; opacity:0.3;"></i>هنوز فعالیتی ثبت نشده است.</div>`; return; }
     document.getElementById('sp-mi-history').innerHTML = h.map(x=>{
       let badge = x.score ? `<b style="color:${x.score>0?'#10b981':'#ef4444'};">${x.score>0?'+':''}${toPersianNum(x.score)}</b>` : "";
       return `<div style="font-size:0.88rem; border-bottom:1px solid var(--border); padding:12px; display:flex; justify-content:space-between; align-items:center;">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <span style="font-size:1.2rem;">${x.icon}</span>
-          <div>
-            <small style="opacity:0.6;">${toPersianNum(x.date)} - ${x.title}</small><br>
-            <b style="color:var(--text);">${x.desc}</b>
-          </div>
-        </div>
-        ${badge}
-      </div>`;
+        <div style="display:flex; align-items:center; gap:12px;"><span style="font-size:1.2rem;">${x.icon}</span><div><small style="opacity:0.6;">${toPersianNum(x.date)} - ${x.title}</small><br><b style="color:var(--text);">${x.desc}</b></div></div>${badge}</div>`;
     }).join('');
   }
+
   function renderGrowthChart(g){ if(typeof Chart === 'undefined') return; if(growthChart) growthChart.destroy(); growthChart = new Chart(document.getElementById('sp-growth-chart'), {type:'line', data:{labels:g.labels, datasets:[{label:'روند رشد', data:g.data, borderColor:'#10b981', tension:0.4, fill:true, backgroundColor:'rgba(16,185,129,0.1)'}]}, options:{maintainAspectRatio:false, plugins:{legend:{display:false}}}}); }
+
   function openReportCard() {
     if(!currentStudent) return;
     showLoading();
     google.script.run.withSuccessHandler(d=>{
       hideLoading();
-      if(!d.success) return showAlert("خطا در دریافت اطلاعات");
-      const info = d.info;
-      const stats = d.stats;
-      const today = new Date().toLocaleDateString('fa-IR');
+      if(!d.success) return showAlert("خطا در دریافت اطلاعات", 'error');
+      const info = d.info; const stats = d.stats; const today = new Date().toLocaleDateString('fa-IR');
       document.getElementById('report-date').innerText = `تاریخ صدور: ${toPersianNum(today)}`;
       let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores.total)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حاضر:</span> <b>${toPersianNum(stats.stats.p)} جلسه</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats.a)} جلسه</b></div><div class="report-stat-row"><span>⏰ تاخیر:</span> <b>${toPersianNum(stats.stats.l)} مورد</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(d.mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
       document.getElementById('report-content').innerHTML = h;
       document.getElementById('report-modal').style.display = 'block';
     }).getFullStudentProfile(currentStudent);
   }
+
   function generateSimpleBarChart(chartData) {
     if(!chartData || !chartData.labels) return "";
     let html = '<div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">';
@@ -987,17 +983,17 @@
       let pct = Math.min(100, (item.value / 10) * 100);
       html += `<div style="display:flex; align-items:center; font-size:0.85rem;"><span style="width:100px;">${item.label}</span><div style="flex:1; background:#eee; height:10px; border-radius:5px; overflow:hidden;"><div style="width:${pct}%; background:var(--primary); height:100%;"></div></div><span style="width:30px; text-align:left; margin-right:5px;">${toPersianNum(item.value)}</span></div>`;
     });
-    html += '</div>';
-    return html;
+    html += '</div>'; return html;
   }
+
   function openTimer() { document.getElementById('timer-modal').style.display='flex'; }
-  function setTimer(m) { timerSec = m*60; updateTimerDisplay(); }
   function setCustomTimer() { const m = parseInt(document.getElementById('t-min').value) || 0; const s = parseInt(document.getElementById('t-sec').value) || 0; if(m===0 && s===0) return showAlert("لطفا زمان را وارد کنید"); timerSec = (m*60) + s; updateTimerDisplay(); }
   function startTimer() { if(timerInterval) clearInterval(timerInterval); timerInterval = setInterval(()=>{ if(timerSec>0) { timerSec--; updateTimerDisplay(); } else { stopTimer(); showAlert("⏰ زمان تمام شد!"); } }, 1000); }
   function stopTimer() { clearInterval(timerInterval); }
   function resetTimer() { stopTimer(); timerSec=0; updateTimerDisplay(); }
   function updateTimerDisplay() { const m = Math.floor(timerSec/60); const s = timerSec%60; document.getElementById('timer-display').innerText = `${toPersianNum(m.toString().padStart(2,'0'))}:${toPersianNum(s.toString().padStart(2,'0'))}`; }
-  function openManualGrouping() { if(!DB.students || DB.students.length===0) return showAlert("هنوز دانش‌آموزی ندارید!"); document.getElementById('g-date').value = new Date().toLocaleDateString('fa-IR'); document.getElementById('g-model').value = ""; document.getElementById('g-current-name').value = ""; tempGroups = []; renderGroupStudentGrid(); renderAddedGroups(); document.getElementById('manual-grouping-modal').style.display='flex'; }
+
+  function openManualGrouping() { if(!DB.students || DB.students.length===0) return showAlert("هنوز دانش‌آموزی ندارید!", 'error'); document.getElementById('g-date').value = new Date().toLocaleDateString('fa-IR'); document.getElementById('g-model').value = ""; document.getElementById('g-current-name').value = ""; tempGroups = []; renderGroupStudentGrid(); renderAddedGroups(); document.getElementById('manual-grouping-modal').style.display='flex'; }
   function renderGroupStudentGrid() { let h = ""; DB.students.forEach(s => { h += `<div class="student-select-card" onclick="toggleStudentSelection(this, '${s.name}')"><img src="${s.image}"><span>${s.name}</span><i class="fas fa-check-circle"></i></div>`; }); document.getElementById('g-students-list').innerHTML = h; }
   function toggleStudentSelection(el, name) { el.classList.toggle('selected'); }
   function addGroupToList() { const gName = document.getElementById('g-current-name').value; let members = []; document.querySelectorAll('.student-select-card.selected').forEach(el => { members.push(el.querySelector('span').innerText); }); if(!gName) return showAlert("لطفا نام گروه را وارد کنید"); if(members.length === 0) return showAlert("حداقل یک نفر را انتخاب کنید"); tempGroups.push({name: gName, members: members}); document.getElementById('g-current-name').value = ""; document.querySelectorAll('.student-select-card.selected').forEach(el => el.classList.remove('selected')); renderAddedGroups(); showToast("گروه اضافه شد"); }
@@ -1007,10 +1003,10 @@
   function openFreeActivity() { document.getElementById('fa-date').value = new Date().toLocaleDateString('fa-IR'); document.getElementById('free-activity-modal').style.display='flex'; }
   function saveFreeActivityLog() { const d = document.getElementById('fa-date').value; const t = document.getElementById('fa-title').value; const desc = document.getElementById('fa-desc').value; if(!t) return showAlert("عنوان الزامی است"); showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); document.getElementById('free-activity-modal').style.display='none'; document.getElementById('fa-title').value = ""; document.getElementById('fa-desc').value = ""; fetchData(); }).saveManualLog({date: d, type: 'free_activity', title: t, details: desc}); }
   let currentArchiveType = 'grouping';
-  function filterArchive(query) { const list = document.getElementById('archive-list'); let h = ""; if(!query || query.trim() === "") { renderArchive(currentArchiveType); return; } const allItems = DB.moduleHistory || []; const filtered = allItems.filter(item => { let searchStr = (item.title + " " + item.date + " " + (item.details || "")).toLowerCase(); if(item.type === 'grouping') searchStr += " گروه بندی"; if(item.type === 'game') searchStr += " بازی"; if(item.type === 'story') searchStr += " داستان"; return searchStr.includes(query.toLowerCase()); }); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">موردی یافت نشد.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
+  function filterArchive(query) { const list = document.getElementById('archive-list'); let h = ""; if(!query || query.trim() === "") { renderArchive(currentArchiveType); return; } const allItems = DB.moduleHistory || []; const filtered = allItems.filter(item => { let searchStr = (item.title + " " + item.date + " " + (item.details || "")).toLowerCase(); return searchStr.includes(query.toLowerCase()); }); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">موردی یافت نشد.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
   function renderArchive(type, tabElement) { if(tabElement) { document.querySelectorAll('#view-archive .tab').forEach(t => t.classList.remove('active')); tabElement.classList.add('active'); } currentArchiveType = type; document.getElementById('archive-search').value = ""; const list = document.getElementById('archive-list'); let h = ""; const filtered = (DB.moduleHistory || []).filter(item => item.type === type); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">هنوز موردی در این دسته ثبت نشده است.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
-  function buildArchiveItemHTML(item) { let headerText = item.title; let bodyContent = ""; let extraBtn = ""; if (item.source === 'plan' && item.planId) { extraBtn = `<br><button class="btn btn-blue" style="font-size:0.8rem; padding:5px 10px; margin-top:10px; width:auto; display:inline-block;" onclick="goToPlan('${item.planId}')">📜 مشاهده طرح درس</button>`; } if (item.type === 'grouping') { let detailsObj = {}; try { detailsObj = JSON.parse(item.details); } catch(e){} if(detailsObj.isMultiGroup) { let groupsHtml = ""; (detailsObj.groups || []).forEach(g => { groupsHtml += `<div style="margin-bottom:8px; border-bottom:1px dashed #eee; padding-bottom:5px;"><span style="font-weight:bold; color:var(--primary);">${g.name}:</span> ${g.members.join('، ')}</div>`; }); bodyContent = groupsHtml; } else { const membersStr = (detailsObj.members || []).join(' - '); const grpName = detailsObj.groupName || ""; if(grpName) headerText += ` <span style="opacity:0.7">(${grpName})</span>`; bodyContent = `<b>اعضا:</b> ${membersStr}`; } } else { const sourceBadge = item.source==='plan' ? '<span style="color:var(--primary);">📚 طرح درس</span>' : '<span style="color:#10b981;">📝 آزاد</span>'; let typeBadge = ""; if(document.getElementById('archive-search').value !== "") { let faType = {'game':'بازی','story':'داستان','trip':'اردو','other':'سایر', 'yade_hazrat': 'یاد حضرت', 'free_activity': 'آزاد', 'grouping': 'گروه‌بندی'}[item.type] || item.type; typeBadge = ` <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:0.8rem;">${faType}</span>`; } bodyContent = `${item.details || 'بدون توضیحات'}<br><br><small>${sourceBadge}${typeBadge}</small>`; } return `<div class="acc-card"><div class="acc-header" onclick="this.parentElement.classList.toggle('open')"><div>${headerText}</div><div style="font-size:0.8rem; white-space:nowrap;">${toPersianNum(item.date)} 🔽</div></div><div class="acc-body">${bodyContent}${extraBtn}</div></div>`; }
-  function goToPlan(planId) { nav('plans'); setTimeout(() => { const el = document.getElementById('plan-' + planId); if(el) { el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.classList.add('open'); el.classList.add('highlight'); setTimeout(() => el.classList.remove('highlight'), 2000); } else { showAlert("طرح درس مورد نظر یافت نشد."); } }, 600); }
+  function buildArchiveItemHTML(item) { let headerText = item.title; let bodyContent = ""; let extraBtn = ""; if (item.source === 'plan' && item.planId) { extraBtn = `<br><button class="btn btn-blue" style="font-size:0.8rem; padding:5px 10px; margin-top:10px; width:auto; display:inline-block;" onclick="goToPlan('${item.planId}')">📜 مشاهده طرح درس</button>`; } if (item.type === 'grouping') { let detailsObj = {}; try { detailsObj = JSON.parse(item.details); } catch(e){} if(detailsObj.isMultiGroup) { let groupsHtml = ""; (detailsObj.groups || []).forEach(g => { groupsHtml += `<div style="margin-bottom:8px; border-bottom:1px dashed #eee; padding-bottom:5px;"><span style="font-weight:bold; color:var(--primary);">${g.name}:</span> ${g.members.join('، ')}</div>`; }); bodyContent = groupsHtml; } else { const membersStr = (detailsObj.members || []).join(' - '); const grpName = detailsObj.groupName || ""; if(grpName) headerText += ` <span style="opacity:0.7">(${grpName})</span>`; bodyContent = `<b>اعضا:</b> ${membersStr}`; } } else { const sourceBadge = item.source==='plan' ? '<span style="color:var(--primary);">📚 طرح درس</span>' : '<span style="color:#10b981;">📝 آزاد</span>'; bodyContent = `${item.details || 'بدون توضیحات'}<br><br><small>${sourceBadge}</small>`; } return `<div class="acc-card"><div class="acc-header" onclick="this.parentElement.classList.toggle('open')"><div>${headerText}</div><div style="font-size:0.8rem; white-space:nowrap;">${toPersianNum(item.date)} 🔽</div></div><div class="acc-body">${bodyContent}${extraBtn}</div></div>`; }
+  function goToPlan(planId) { nav('plans'); setTimeout(() => { const el = document.getElementById('plan-' + planId); if(el) { el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.classList.add('open'); el.classList.add('highlight'); setTimeout(() => el.classList.remove('highlight'), 2000); } else { showAlert("طرح درس مورد نظر یافت نشد.", 'error'); } }, 600); }
 </script>
 </body>
 </html>
