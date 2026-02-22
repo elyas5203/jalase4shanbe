@@ -473,13 +473,6 @@
 
       <div id="modules-container"></div>
 
-      <label>اولویت یادآوری خرید:</label>
-      <select id="p-prio">
-        <option value="low">اولویت پایین 🟢</option>
-        <option value="mid">اولویت متوسط 🟡</option>
-        <option value="high">اولویت بالا 🔴</option>
-      </select>
-
       <div style="display:flex; gap:12px; margin-top:25px;">
         <button class="btn btn-blue" onclick="savePlan()">💾 ذخیره نهایی</button>
         <button class="btn btn-red" onclick="document.getElementById('plan-modal').style.display='none'">❌ انصراف</button>
@@ -905,7 +898,6 @@
     document.getElementById('p-date').value=p.date;
     document.getElementById('p-title').value=p.title;
     document.getElementById('p-sin').value=p.sin||"";
-    document.getElementById('p-prio').value=p.priority;
     document.getElementById('modules-container').innerHTML="";
     let ms = []; try { ms = JSON.parse(p.modules||"[]"); } catch(e) {}
     ms.forEach(m=> {
@@ -931,14 +923,14 @@
   }
 
   function savePlan() {
-    const idVal=document.getElementById('p-id').value; const dVal=document.getElementById('p-date').value; const tVal=document.getElementById('p-title').value; const sVal=document.getElementById('p-sin').value; const prVal=document.getElementById('p-prio').value;
+    const idVal=document.getElementById('p-id').value; const dVal=document.getElementById('p-date').value; const tVal=document.getElementById('p-title').value; const sVal=document.getElementById('p-sin').value;
     if(!tVal) return showAlert("عنوان طرح درس اجباری است.");
     let mods = [];
     document.querySelectorAll('#modules-container > .mod-box-full').forEach(el=>{
       let its = []; el.querySelectorAll('.mat-chip').forEach(c=> its.push({name: c.querySelector('span').innerText.substring(2).trim(), type: c.classList.contains('buy') ? 'buy' : 'have'}));
       mods.push({type: el.querySelector('.m-type').value, name: el.querySelector('.m-name').value, desc: el.querySelector('.m-desc').value, items: its});
     });
-    showLoading(); google.script.run.withSuccessHandler(r=>{ showToast(r.msg); document.getElementById('plan-modal').style.display='none'; fetchData(); }).savePlan(idVal,dVal,tVal,prVal,sVal,JSON.stringify(mods));
+    showLoading(); google.script.run.withSuccessHandler(r=>{ showToast(r.msg); document.getElementById('plan-modal').style.display='none'; fetchData(); }).savePlan(idVal,dVal,tVal,sVal,JSON.stringify(mods));
   }
 
   function renderMIChart(d){
@@ -983,19 +975,19 @@
   function renderSummaryStats(s) {
     const h = `
       <div style="text-align:center; padding:10px; background:#f0fdf4; border-radius:12px; border:1px solid #bbf7d0;">
-        <small style="color:#15803d; display:block;">حاضر</small>
+        <small style="color:#15803d; display:block;">حضور به‌موقع</small>
         <b style="font-size:1.2rem;">${toPersianNum(s.p)}</b>
       </div>
-      <div style="text-align:center; padding:10px; background:#fef2f2; border-radius:12px; border:1px solid #fecaca;">
-        <small style="color:#b91c1c; display:block;">غایب</small>
-        <b style="font-size:1.2rem;">${toPersianNum(s.a)}</b>
-      </div>
       <div style="text-align:center; padding:10px; background:#fffbeb; border-radius:12px; border:1px solid #fef3c7;">
-        <small style="color:#b45309; display:block;">تاخیر</small>
+        <small style="color:#b45309; display:block;">حضور با تاخیر</small>
         <b style="font-size:1.2rem;">${toPersianNum(s.l)} <small>(${toPersianNum(s.lm)} د)</small></b>
       </div>
+      <div style="text-align:center; padding:10px; background:#fef2f2; border-radius:12px; border:1px solid #fecaca;">
+        <small style="color:#b91c1c; display:block;">غیبت</small>
+        <b style="font-size:1.2rem;">${toPersianNum(s.a)}</b>
+      </div>
       <div style="text-align:center; padding:10px; background:#f0f9ff; border-radius:12px; border:1px solid #bae6fd;">
-        <small style="color:#0369a1; display:block;">موجه</small>
+        <small style="color:#0369a1; display:block;">غیبت موجه</small>
         <b style="font-size:1.2rem;">${toPersianNum(s.e)}</b>
       </div>
     `;
@@ -1019,7 +1011,7 @@
       if(!d.success) return showAlert("خطا در دریافت اطلاعات", 'error');
       const info = d.info; const stats = d.stats; const today = new Date().toLocaleDateString('fa-IR');
       document.getElementById('report-date').innerText = `تاریخ صدور: ${toPersianNum(today)}`;
-      let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores.total)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حاضر:</span> <b>${toPersianNum(stats.stats.p)} جلسه</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats.a)} جلسه</b></div><div class="report-stat-row"><span>⏰ تاخیر:</span> <b>${toPersianNum(stats.stats.l)} مورد (${toPersianNum(stats.stats.lm)} دقیقه)</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(d.mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
+      let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores.total)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حضور به‌موقع:</span> <b>${toPersianNum(stats.stats.p)} جلسه</b></div><div class="report-stat-row"><span>⏰ حضور با تاخیر:</span> <b>${toPersianNum(stats.stats.l)} جلسه (${toPersianNum(stats.stats.lm)} دقیقه)</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats.a)} جلسه</b></div><div class="report-stat-row"><span>🏳️ غیبت موجه:</span> <b>${toPersianNum(stats.stats.e)} جلسه</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(d.mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
       document.getElementById('report-content').innerHTML = h;
       document.getElementById('report-modal').style.display = 'block';
     }).getFullStudentProfile(currentStudent);

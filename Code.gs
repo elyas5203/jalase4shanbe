@@ -329,7 +329,7 @@ function checkDailyReminders() {
     let isToday = (pDate === todayStr);
     if (pDate !== "" && pDate < todayStr && !isToday) return;
     if(shoppingList[pid] && shoppingList[pid].length > 0) {
-      if(isToday || pPrio === 'high') {
+      if(isToday) {
         let itemsMsg = "", keyboard = [], currentRow = [];
         let list = shoppingList[pid];
         for(let j=0; j<list.length; j++) {
@@ -487,6 +487,7 @@ function updateCalculations(ss) {
           if(v.includes("غیبت")) { m[n].ab++; m[n].sy -= 1; }
           else if(v.includes("تاخیر")) {
             m[n].la++;
+            m[n].sy += 1;
             let minsMatch = v.match(/\(([^)]+)\)/);
             if (minsMatch) {
               let minsStr = minsMatch[1].replace(/[^0-9۰-۹]/g, '');
@@ -597,7 +598,7 @@ function getPlans(ss) {
 
 // --- توابع ذخیره سازی اصلاح شده ---
 
-function savePlan(id, date, title, priority, sin, modules) {
+function savePlan(id, date, title, sin, modules) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const shP = ss.getSheetByName(CONFIG.SHEETS.PLANS);
     const shE = ss.getSheetByName(CONFIG.SHEETS.ESSENTIALS);
@@ -617,6 +618,7 @@ function savePlan(id, date, title, priority, sin, modules) {
         }
     }
 
+    let priority = "low"; // Removed from UI, defaulting
     if(rowIndex === -1) {
         shP.appendRow([date, title, priority, modules, sin, currentId, 'Active']);
     } else {
@@ -863,6 +865,7 @@ function getStudentDetails(n) {
         if (v.includes("حاضر")) { sys++; s.p++ }
         else if (v.includes("غیبت")) { sys--; s.a++ }
         else if (v.includes("تاخیر")) {
+          sys++;
           s.l++;
           let minsMatch = v.match(/\(([^)]+)\)/);
           if (minsMatch) {
