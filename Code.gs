@@ -122,11 +122,12 @@ function getComprehensiveStudentHistory(ss, studentName) {
   // 1. MI Logs
   const miProfile = getStudentMIProfile(studentName);
   miProfile.history.forEach(h => {
+    let statusText = h.score === 1 ? "✅ مثبت" : (h.score === -1 ? "❌ منفی" : "⚪ خنثی");
     combined.push({
       date: h.date,
       type: 'mi',
       title: h.type,
-      desc: h.behavior,
+      desc: h.behavior + " (" + statusText + ")",
       score: h.score,
       icon: '🧠'
     });
@@ -345,20 +346,25 @@ function checkSheets(ss) {
             if(!keys.includes("BOT_TOKEN")) sh.appendRow(["BOT_TOKEN", "", "توکن ربات تلگرام"]);
             if(!keys.includes("ADMIN_CHAT_IDS")) sh.appendRow(["ADMIN_CHAT_IDS", "", "آیدی مدیران تلگرام"]);
         }
+        // اگر شیت هوش وجود داشت اما دیتا قدیمی بود، آپدیت کن
+        if(sheetName === CONFIG.SHEETS.MI_CONFIG) {
+          const firstVal = sh.getRange(2, 1).getValue();
+          if(firstVal === "زبانی-کلامی 🗣️") fillMIData(sh);
+        }
     }
   }
 }
 
 function fillMIData(sh) {
   const data = [
-    ["زبانی-کلامی 🗣️", "توانایی درک و تولید زبان.", "استفاده از واژگان غنی,بیان شیوا", "قطع کردن حرف دیگران"],
-    ["منطقی-ریاضی 🔢", "تحلیل مسائل و تفکر علمی.", "حل معما,استدلال قوی", "بی‌نظمی در استدلال"],
-    ["تصویری-فضایی 🎨", "تجسم فضایی.", "نقاشی خوب,تصویرسازی", "گم کردن مسیرها"],
-    ["بدنی-جنبشی ⚽", "استفاده از بدن.", "مهارت ورزش,زبان بدن", "بی‌قراری"],
-    ["موسیقایی 🎵", "حساسیت به ریتم.", "تشخیص ریتم,زمزمه", "بی‌توجهی به صداها"],
-    ["میان‌فردی 🤝", "درک دیگران.", "رهبری گروه,همدلی", "پرخاشگری,انزوا"],
-    ["درون‌فردی 🧘", "شناخت خود.", "داشتن هدف,کنترل خشم", "عدم شناخت احساس"],
-    ["طبیعت‌گرا 🌿", "درک طبیعت.", "علاقه به حیوانات,مشاهده محیط", "آسیب به طبیعت"]
+    ["هوش کلامی 🗣️", "افراد با هوش کلامی بالا، مجریان و سخنوران توانمندی هستند.", "پرگو و وراجی,استفاده از واژگان غنی,شنوندگان فعال,تکلم زودهنگام در کودکی,تعامل کلامی با بزرگسالان,صحبت با جزئیات,صدای جذاب و رسا,تمایل به آموزش در کلاس", ""],
+    ["هوش منطقی-ریاضی 🔢", "افراد با هوش منطقی-ریاضی اغلب مدرسین خود را به چالش می‌کشند.", "پرسش‌های مکرر و غیرمعمول,توانایی در دسته‌بندی,یادگیری سریع رنگ‌ها و اسامی,صحبت فراتر از سن,توانایی در فهم ریاضیات,علاقه‌مندی به بازی‌های فکری,علاقه به یادگیری,تمرکز بالا,نگاه انتقادی", ""],
+    ["هوش بین فردی 🤝", "توانایی درک و تعامل مؤثر با دیگران.", "درک احساسات اطرافیان,برقراری ارتباط سریع از کودکی,واکنش‌های هیجانی مناسب,موفقیت در بیان,مسالمت‌جو در میان همسالان,سازش‌پذیری و معاشرت,دوستان زیاد و رهبری گروه,درک شرایط افراد", ""],
+    ["هوش درون فردی 🧘", "توانایی شناخت خود و کنترل هیجانات درونی.", "آرامش و وقار,ترجیح تنهایی,شهود قوی,اعتماد به نفس بالا,کنترل احساسات,اصلاح رفتار,لذت از فعالیت‌های فردی,خلاقیت و تخیل قوی,پرسش‌های وجودی,رفتار و پوشش فراتر از سن", ""],
+    ["هوش تصویری/فضایی 🎨", "توانایی تجسم اجسام و خلق آثار بصری.", "مهارت در نقاشی,علاقه به مونتاژ و دمونتاژ,توانایی در پازل,استعداد در ساخت لگو,موفقیت در فعالیت‌های دستی,عملکرد خوب در املا,حافظه تصویری قوی,علاقه به اسباب‌بازی‌های هندسی,توانایی در حل روبیک", ""],
+    ["هوش جنبشی-حرکتی ⚽", "توانایی استفاده از مهارت‌های بدنی و حرکتی.", "تحرک زیاد,حرکات تکراری,ترجیح بازی‌های حرکتی,توانمند در ورزش,داوطلب کمک,بی‌علاقگی به نشستن طولانی,واکنش‌های سریع,تشخیص بیش‌فعالی,چالش تعادلی", ""],
+    ["هوش طبیعت‌گرا 🌿", "علاقه به شناخت و حفظ محیط زیست و موجودات زنده.", "علاقه به گیاهان و حیوانات,علاقه‌مند به مباحث حیات وحش,علاقه به حضور در طبیعت,علاقه به جمع‌آوری نمونه حشرات,حساسیت به حفظ طبیعت", ""],
+    ["هوش موسیقیایی 🎵", "حساسیت به ریتم، آهنگ و صداها.", "تشخیص ریتم,زمزمه,آواز خواندن,درک تن صدا", "بی‌توجهی به صداها"]
   ];
   sh.getRange(2, 1, data.length, 4).setValues(data);
 }
@@ -598,37 +604,112 @@ function getStudentMIProfile(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shLogs = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
   const shConf = ss.getSheetByName(CONFIG.SHEETS.MI_CONFIG);
-  if(!shLogs || !shConf) return {config:[], chart:{labels:[],data:[]}, history:[]};
+  if(!shLogs || !shConf) return {config:[], chart:{labels:[],data:[]}, history:[], traitStates:{}};
+
   const cData = shConf.getDataRange().getValues();
   let confArr = [];
-  for(let i=1; i<cData.length; i++) { confArr.push({type: cData[i][0], desc: cData[i][1], pos: cData[i][2], neg: cData[i][3]}); }
+  for(let i=1; i<cData.length; i++) {
+    confArr.push({
+      type: cData[i][0],
+      desc: cData[i][1],
+      pos: cData[i][2] ? String(cData[i][2]).split(',') : [],
+      neg: cData[i][3] ? String(cData[i][3]).split(',') : []
+    });
+  }
+
   const lData = shLogs.getDataRange().getValues();
-  let scores = {}; let history = [];
-  confArr.forEach(c => scores[c.type] = 0);
-  for(let i=1; i<lData.length; i++) { if(lData[i][1] == name) { let t = lData[i][2]; let s = Number(lData[i][4]); if(scores[t] !== undefined) scores[t] += s; history.push({ date: new Date(lData[i][0]).toLocaleDateString('fa-IR'), type: t, behavior: lData[i][3], score: s }); } }
+  let traitStates = {};
+  let history = [];
+
+  for(let i=1; i<lData.length; i++) {
+    if(String(lData[i][1]) === String(name)) {
+      let type = lData[i][2];
+      let behavior = lData[i][3];
+      let score = Number(lData[i][4]);
+
+      // ذخیره آخرین وضعیت برای هر رفتار
+      traitStates[type + "_" + behavior] = score;
+
+      history.push({
+        date: new Date(lData[i][0]).toLocaleDateString('fa-IR'),
+        type: type,
+        behavior: behavior,
+        score: score
+      });
+    }
+  }
+
+  let scores = {};
+  confArr.forEach(c => {
+    scores[c.type] = 0;
+    // جمع امتیازات بر اساس آخرین وضعیت هر ویژگی تعریف شده
+    c.pos.forEach(p => {
+      scores[c.type] += (traitStates[c.type + "_" + p] || 0);
+    });
+    c.neg.forEach(n => {
+      scores[c.type] += (traitStates[c.type + "_" + n] || 0);
+    });
+  });
+
   let chartData = []; let labels = [];
-  confArr.forEach(c => { labels.push(c.type); chartData.push(Math.max(0, scores[c.type])); });
-  return { config: confArr, chart: { labels, data: chartData }, history: history.reverse().slice(0, 15) };
+  confArr.forEach(c => {
+    labels.push(c.type);
+    chartData.push(Math.max(0, scores[c.type]));
+  });
+
+  return {
+    config: confArr,
+    chart: { labels, data: chartData },
+    history: history.reverse().slice(0, 20),
+    traitStates: traitStates
+  };
 }
 
 function getClassMIData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shLogs = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
   const shConf = ss.getSheetByName(CONFIG.SHEETS.MI_CONFIG);
-  if(!shLogs || !shConf) return {labels: [], averages: []};
+  const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
+  if(!shLogs || !shConf || !shP) return {labels: [], averages: []};
+
+  const students = shP.getDataRange().getValues().slice(1).map(r => r[0]).filter(n => n);
+  const studentCount = Math.max(1, students.length);
+
   const cData = shConf.getDataRange().getValues();
   let labels = [];
-  for(let i=1; i<cData.length; i++) labels.push(cData[i][0]);
+  let confArr = [];
+  for(let i=1; i<cData.length; i++) {
+    labels.push(cData[i][0]);
+    confArr.push({
+      type: cData[i][0],
+      traits: (cData[i][2] ? String(cData[i][2]).split(',') : []).concat(cData[i][3] ? String(cData[i][3]).split(',') : [])
+    });
+  }
+
   const lData = shLogs.getDataRange().getValues();
-  const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
-  const studentCount = Math.max(1, shP.getLastRow() - 1);
+  let studentTraitStates = {}; // { "Student|Type|Trait": score }
+
+  for(let i=1; i<lData.length; i++) {
+    let sName = lData[i][1];
+    let type = lData[i][2];
+    let trait = lData[i][3];
+    let score = Number(lData[i][4]);
+    studentTraitStates[sName + "|" + type + "|" + trait] = score;
+  }
+
   let totalScores = {};
   labels.forEach(l => totalScores[l] = 0);
-  for(let i=1; i<lData.length; i++) {
-    let t = lData[i][2];
-    let s = Number(lData[i][4]);
-    if(totalScores[t] !== undefined) totalScores[t] += s;
-  }
+
+  students.forEach(sName => {
+    confArr.forEach(c => {
+      let studentTypeScore = 0;
+      c.traits.forEach(t => {
+        studentTypeScore += (studentTraitStates[sName + "|" + c.type + "|" + t] || 0);
+      });
+      totalScores[c.type] += Math.max(0, studentTypeScore);
+    });
+  });
+
   let averages = labels.map(l => Number((totalScores[l] / studentCount).toFixed(2)));
   return {labels, averages};
 }

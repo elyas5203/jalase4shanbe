@@ -798,7 +798,7 @@
       document.getElementById('sp-dob').value=i.dob || "";
       document.getElementById('sp-school').value=i.school || "";
       document.getElementById('sp-medical').value=i.medical || "";
-      renderMIChart(d.mi.chart); renderMIAccordion(d.mi.config, n); renderFullHistory(d.fullHistory); renderGrowthChart(d.stats.growth);
+      renderMIChart(d.mi.chart); renderMIAccordion(d.mi.config, n, d.mi.traitStates); renderFullHistory(d.fullHistory); renderGrowthChart(d.stats.growth);
       nav('single-profile');
     }).withFailureHandler(e => { hideLoading(); showAlert("خطا در بارگذاری پروفایل: " + e.message); }).getFullStudentProfile(n);
   }
@@ -896,8 +896,53 @@
       }
     });
   }
-  function renderMIAccordion(conf, name){ let h=""; conf.forEach(c=>{ h += `<div class="card" style="padding:12px; margin-bottom:8px;"><div style="font-weight:bold; cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display=='block'?'none':'block'">${c.type} 🔽</div><div style="display:none; padding-top:12px;"><small style="color:#64748b; display:block; margin-bottom:12px;">${c.desc}</small>${c.pos.split(',').map(b=>`<button class="btn btn-green" style="font-size:0.75rem; padding:8px 12px; margin:3px; width:auto; display:inline-flex;" onclick="logMI('${name}','${c.type}','${b}',1)">+ ${b}</button>`).join('')}${c.neg.split(',').map(b=>`<button class="btn btn-red" style="font-size:0.75rem; padding:8px 12px; margin:3px; width:auto; display:inline-flex;" onclick="logMI('${name}','${c.type}','${b}',-1)">- ${b}</button>`).join('')}</div></div>`; }); document.getElementById('sp-mi-accordion').innerHTML = h; }
-  function logMI(n,t,b,s){ showConfirm("ثبت این مورد در سوابق هوش؟", ()=>{ google.script.run.withSuccessHandler(()=>{showToast("ثبت شد"); openProfile(n);}).submitMILog(n,t,b,s); }); }
+  function renderMIAccordion(conf, name, traitStates){
+    let h="";
+    conf.forEach(c=>{
+      let traitHtml = "";
+      const allTraits = (c.pos || []).concat(c.neg || []);
+
+      allTraits.forEach(t => {
+        if(!t) return;
+        let currentState = traitStates[c.type + "_" + t] || 0;
+
+        traitHtml += `<div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid #eee;">
+          <span style="font-size:0.9rem; flex:1;">${t}</span>
+          <div style="display:flex; gap:8px;">
+            <button class="btn ${currentState === 1 ? 'btn-green' : 'btn-outline'}"
+                    style="width:40px; height:40px; padding:0; border-radius:10px; border-color:#10b981; color:${currentState === 1 ? 'white' : '#10b981'}"
+                    onclick="logMI('${name}','${c.type}','${t}', ${currentState === 1 ? 0 : 1})">
+              <i class="fas fa-check"></i>
+            </button>
+            <button class="btn ${currentState === -1 ? 'btn-red' : 'btn-outline'}"
+                    style="width:40px; height:40px; padding:0; border-radius:10px; border-color:#ef4444; color:${currentState === -1 ? 'white' : '#ef4444'}"
+                    onclick="logMI('${name}','${c.type}','${t}', ${currentState === -1 ? 0 : -1})">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+        </div>`;
+      });
+
+      h += `<div class="card" style="padding:12px; margin-bottom:8px;">
+        <div style="font-weight:bold; cursor:pointer; display:flex; justify-content:space-between;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display=='block'?'none':'block'">
+          <span>${c.type}</span> <span>🔽</span>
+        </div>
+        <div style="display:none; padding-top:12px;">
+          <small style="color:#64748b; display:block; margin-bottom:12px;">${c.desc}</small>
+          ${traitHtml}
+        </div>
+      </div>`;
+    });
+    document.getElementById('sp-mi-accordion').innerHTML = h;
+  }
+  function logMI(n,t,b,s){
+    showLoading();
+    google.script.run.withSuccessHandler(()=>{
+      hideLoading();
+      showToast("بروزرسانی شد");
+      openProfile(n);
+    }).submitMILog(n,t,b,s);
+  }
   function renderFullHistory(h){
     if(!h || h.length === 0) {
       document.getElementById('sp-mi-history').innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;"><i class="fas fa-history" style="font-size:2rem; display:block; margin-bottom:10px; opacity:0.3;"></i>هنوز فعالیتی ثبت نشده است.</div>`;
@@ -939,7 +984,7 @@
     let dataMap = chartData.labels.map((l, i) => ({label: l, value: chartData.data[i]}));
     dataMap.sort((a,b) => b.value - a.value);
     dataMap.forEach(item => {
-      let pct = Math.min(100, (item.value / 5) * 100);
+      let pct = Math.min(100, (item.value / 10) * 100);
       html += `<div style="display:flex; align-items:center; font-size:0.85rem;"><span style="width:100px;">${item.label}</span><div style="flex:1; background:#eee; height:10px; border-radius:5px; overflow:hidden;"><div style="width:${pct}%; background:var(--primary); height:100%;"></div></div><span style="width:30px; text-align:left; margin-right:5px;">${toPersianNum(item.value)}</span></div>`;
     });
     html += '</div>';
