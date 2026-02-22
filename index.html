@@ -277,10 +277,16 @@
         <small style="color:#4f46e5; font-weight:bold;">متربی برتر هفته 🥇</small>
         <div style="font-size:1.3rem; font-weight:bold; color:var(--primary); margin-top:8px;" id="top-student">...</div>
       </div>
-      <div class="card"><canvas id="mainChart" height="200"></canvas></div>
+      <div class="card">
+        <div style="position: relative; height: 220px; width: 100%;">
+          <canvas id="mainChart"></canvas>
+        </div>
+      </div>
       <div id="class-mi-section" class="card" style="display:none;">
         <h3>📊 وضعیت هوش کل کلاس (میانگین)</h3>
-        <canvas id="classMIChart" height="200"></canvas>
+        <div style="position: relative; height: 320px; width: 100%;">
+          <canvas id="classMIChart"></canvas>
+        </div>
       </div>
       <div class="card"><h3>📋 وضعیت کلی اعضا</h3><div id="dash-list"></div></div>
     </div>
@@ -352,12 +358,20 @@
         </div>
       </div>
       <div id="tab-mi" class="tab-content">
-        <div class="card"><canvas id="sp-mi-chart"></canvas></div>
+        <div class="card">
+          <div style="position: relative; height: 400px; width: 100%;">
+            <canvas id="sp-mi-chart"></canvas>
+          </div>
+        </div>
         <div id="sp-mi-accordion"></div>
       </div>
       <div id="tab-stats" class="tab-content">
         <div class="card"><h3>⏳ تاریخچه فعالیت‌ها</h3><div id="sp-mi-history" style="max-height:350px; overflow-y:auto;"></div></div>
-        <div class="card"><canvas id="sp-growth-chart" height="180"></canvas></div>
+        <div class="card">
+          <div style="position: relative; height: 200px; width: 100%;">
+            <canvas id="sp-growth-chart"></canvas>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -716,6 +730,8 @@
           type:'line',
           data:{labels:DB.trend.labels, datasets:[{label:'حضور %', data:DB.trend.data, borderColor:'#4f46e5', tension:0.35, fill:true, backgroundColor:'rgba(79,70,229,0.1)'}]},
           options:{
+            responsive: true,
+            maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins:{
               legend:{display:false},
@@ -921,7 +937,6 @@
   function renderMIChart(d){
     if(typeof Chart === 'undefined') return;
     const ctx = document.getElementById('sp-mi-chart');
-    ctx.style.height = '400px';
     if(miChart) miChart.destroy();
     miChart = new Chart(ctx, {
       type:'bar',
@@ -958,7 +973,15 @@
     }).join('');
   }
 
-  function renderGrowthChart(g){ if(typeof Chart === 'undefined') return; if(growthChart) growthChart.destroy(); growthChart = new Chart(document.getElementById('sp-growth-chart'), {type:'line', data:{labels:g.labels, datasets:[{label:'روند رشد', data:g.data, borderColor:'#10b981', tension:0.4, fill:true, backgroundColor:'rgba(16,185,129,0.1)'}]}, options:{maintainAspectRatio:false, plugins:{legend:{display:false}}}}); }
+  function renderGrowthChart(g){
+    if(typeof Chart === 'undefined') return;
+    if(growthChart) growthChart.destroy();
+    growthChart = new Chart(document.getElementById('sp-growth-chart'), {
+      type:'line',
+      data:{labels:g.labels, datasets:[{label:'روند رشد', data:g.data, borderColor:'#10b981', tension:0.4, fill:true, backgroundColor:'rgba(16,185,129,0.1)'}]},
+      options:{responsive: true, maintainAspectRatio:false, plugins:{legend:{display:false}}}
+    });
+  }
 
   function openReportCard() {
     if(!currentStudent) return;
