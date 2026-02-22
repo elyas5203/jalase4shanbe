@@ -366,6 +366,7 @@
         <div id="sp-mi-accordion"></div>
       </div>
       <div id="tab-stats" class="tab-content">
+        <div class="card" id="sp-summary-stats" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;"></div>
         <div class="card"><h3>⏳ تاریخچه فعالیت‌ها</h3><div id="sp-mi-history" style="max-height:350px; overflow-y:auto;"></div></div>
         <div class="card">
           <div style="position: relative; height: 200px; width: 100%;">
@@ -845,7 +846,7 @@
       document.getElementById('sp-dob').value=i.dob || "";
       document.getElementById('sp-school').value=i.school || "";
       document.getElementById('sp-medical').value=i.medical || "";
-      renderMIChart(d.mi.chart); renderMIAccordion(d.mi.config, n, d.mi.traitStates); renderFullHistory(d.fullHistory); renderGrowthChart(d.stats.growth);
+      renderMIChart(d.mi.chart); renderMIAccordion(d.mi.config, n, d.mi.traitStates); renderFullHistory(d.fullHistory); renderGrowthChart(d.stats.growth); renderSummaryStats(d.stats.stats);
       nav('single-profile');
     }).withFailureHandler(e => { hideLoading(); showAlert("خطا در بارگذاری پروفایل: " + e.message, 'error'); }).getFullStudentProfile(n);
   }
@@ -973,6 +974,27 @@
     }).join('');
   }
 
+  function renderSummaryStats(s) {
+    const h = `
+      <div style="text-align:center; padding:10px; background:#f0fdf4; border-radius:12px; border:1px solid #bbf7d0;">
+        <small style="color:#15803d; display:block;">حاضر</small>
+        <b style="font-size:1.2rem;">${toPersianNum(s.p)}</b>
+      </div>
+      <div style="text-align:center; padding:10px; background:#fef2f2; border-radius:12px; border:1px solid #fecaca;">
+        <small style="color:#b91c1c; display:block;">غایب</small>
+        <b style="font-size:1.2rem;">${toPersianNum(s.a)}</b>
+      </div>
+      <div style="text-align:center; padding:10px; background:#fffbeb; border-radius:12px; border:1px solid #fef3c7;">
+        <small style="color:#b45309; display:block;">تاخیر</small>
+        <b style="font-size:1.2rem;">${toPersianNum(s.l)} <small>(${toPersianNum(s.lm)} د)</small></b>
+      </div>
+      <div style="text-align:center; padding:10px; background:#f0f9ff; border-radius:12px; border:1px solid #bae6fd;">
+        <small style="color:#0369a1; display:block;">موجه</small>
+        <b style="font-size:1.2rem;">${toPersianNum(s.e)}</b>
+      </div>
+    `;
+    document.getElementById('sp-summary-stats').innerHTML = h;
+  }
   function renderGrowthChart(g){
     if(typeof Chart === 'undefined') return;
     if(growthChart) growthChart.destroy();
@@ -991,7 +1013,7 @@
       if(!d.success) return showAlert("خطا در دریافت اطلاعات", 'error');
       const info = d.info; const stats = d.stats; const today = new Date().toLocaleDateString('fa-IR');
       document.getElementById('report-date').innerText = `تاریخ صدور: ${toPersianNum(today)}`;
-      let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores.total)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حاضر:</span> <b>${toPersianNum(stats.stats.p)} جلسه</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats.a)} جلسه</b></div><div class="report-stat-row"><span>⏰ تاخیر:</span> <b>${toPersianNum(stats.stats.l)} مورد</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(d.mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
+      let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores.total)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حاضر:</span> <b>${toPersianNum(stats.stats.p)} جلسه</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats.a)} جلسه</b></div><div class="report-stat-row"><span>⏰ تاخیر:</span> <b>${toPersianNum(stats.stats.l)} مورد (${toPersianNum(stats.stats.lm)} دقیقه)</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(d.mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
       document.getElementById('report-content').innerHTML = h;
       document.getElementById('report-modal').style.display = 'block';
     }).getFullStudentProfile(currentStudent);

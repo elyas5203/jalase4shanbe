@@ -15,7 +15,7 @@ const CONFIG = {
 };
 
 const SHEET_STRUCTURE = {
-  "افراد": ["نام", "غیبت", "تاخیر", "امتیاز", "وضعیت", "عکس", "امتیاز_دستی", "بیوگرافی", "تلفن_متربی", "تلفن_والدین", "تولد", "مدرسه", "پزشکی", "یادداشت_والدین"],
+  "افراد": ["نام", "غیبت", "تاخیر", "امتیاز", "وضعیت", "عکس", "امتیاز_دستی", "بیوگرافی", "تلفن_متربی", "تلفن_والدین", "تولد", "مدرسه", "پزشکی", "یادداشت_والدین", "مجموع_دقایق_تاخیر"],
   "حضور و غیاب": ["نام"],
   "تنظیمات": ["کلید", "مقدار", "توضیحات"],
   "یادداشت_جلسات": ["تاریخ", "یادداشت"],
@@ -124,7 +124,7 @@ function getComprehensiveStudentHistory(ss, studentName) {
   miProfile.history.forEach(h => {
     let statusText = h.score === 1 ? "✅ مثبت" : (h.score === -1 ? "❌ منفی" : "⚪ خنثی");
     combined.push({
-      date: h.date,
+      date: normalizeDateStr(h.date),
       type: 'mi',
       title: h.type,
       desc: h.behavior + " (" + statusText + ")",
@@ -142,7 +142,7 @@ function getComprehensiveStudentHistory(ss, studentName) {
     else if(h.status.includes('تاخیر')) icon = '⏰';
 
     combined.push({
-      date: h.date,
+      date: normalizeDateStr(h.date),
       type: 'att',
       title: 'حضور و غیاب',
       desc: h.status,
@@ -152,12 +152,13 @@ function getComprehensiveStudentHistory(ss, studentName) {
 
   // 3. General Activities (if present on that day)
   const allActivities = getCombinedHistory(ss);
-  const attDates = details.history.filter(h => h.status.includes('حاضر') || h.status.includes('تاخیر')).map(h => normalizeDateStr(h.date));
+  const attDates = details.history.map(h => normalizeDateStr(h.date));
 
   allActivities.forEach(act => {
-    if(attDates.includes(normalizeDateStr(act.date))) {
+    let normDate = normalizeDateStr(act.date);
+    if(attDates.includes(normDate)) {
       combined.push({
-        date: act.date,
+        date: normDate,
         type: 'activity',
         title: act.title,
         desc: act.type === 'grouping' ? 'شرکت در گروه‌بندی' : (act.details || 'شرکت در فعالیت کلاسی'),
@@ -340,19 +341,30 @@ function checkSheets(ss) {
       }
       if(sheetName === CONFIG.SHEETS.MI_CONFIG) fillMIData(sh);
     } else {
+        // Ensure all columns exist
+        let lastCol = sh.getLastColumn();
+        if (lastCol > 0) {
+          let headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+          let expectedHeaders = SHEET_STRUCTURE[sheetName];
+          expectedHeaders.forEach(h => {
+            if (!headers.includes(h)) {
+              sh.getRange(1, lastCol + 1).setValue(h);
+              lastCol++;
+            }
+          });
+        }
+
         if(sheetName === CONFIG.SHEETS.SETTINGS) {
             const data = sh.getDataRange().getValues();
             const keys = data.map(r => r[0]);
             if(!keys.includes("BOT_TOKEN")) sh.appendRow(["BOT_TOKEN", "", "توکن ربات تلگرام"]);
             if(!keys.includes("ADMIN_CHAT_IDS")) sh.appendRow(["ADMIN_CHAT_IDS", "", "آیدی مدیران تلگرام"]);
         }
-        // اگر شیت هوش وجود داشت اما دیتا قدیمی بود، آپدیت کن
         if(sheetName === CONFIG.SHEETS.MI_CONFIG) {
           const firstVal = sh.getRange(2, 1).getValue();
-          // آپدیت برای نسخه‌های قبلی
           if(firstVal === "زبانی-کلامی 🗣️" || firstVal === "هوش کلامی 🗣️") {
              const rowValue = sh.getRange(2, 3).getValue();
-             if(!rowValue.includes("(")) fillMIData(sh); // اگر توضیحات پرانتزی نداشت آپدیت کن
+             if(!rowValue.includes("(")) fillMIData(sh);
           }
         }
     }
@@ -380,11 +392,40 @@ function updateCalculations(ss) {
   const pD = shP.getDataRange().getValues();
   const aD = shA.getDataRange().getValues();
   let m = {};
-  for(let i=1; i<pD.length; i++) { if(pD[i][0]) m[pD[i][0]] = {r: i+1, ab: 0, la: 0, sy: 0, ma: Number(pD[i][6]) || 0}; }
-  if(aD.length > 0) { for(let c=1; c<aD[0].length; c++) { for(let r=1; r<aD.length; r++) { let n = aD[r][0]; let v = String(aD[r][c]); if(m[n]) { if(v.includes("غیبت")) { m[n].ab++; m[n].sy -= 1; } else if(v.includes("تاخیر")) { m[n].la++; } else if(v.includes("حاضر")) { m[n].sy += 1; } else if(v.includes("موجه")) { m[n].sy += 0.5; } } } } }
-  for(let n in m) { shP.getRange(m[n].r, 2, 1, 3).setValues([[m[n].ab, m[n].la, m[n].sy + m[n].ma]]); }
+  for(let i=1; i<pD.length; i++) {
+    if(pD[i][0]) m[pD[i][0]] = {r: i+1, ab: 0, la: 0, lm: 0, sy: 0, ma: Number(pD[i][6]) || 0};
+  }
+  if(aD.length > 0) {
+    for(let c=1; c<aD[0].length; c++) {
+      for(let r=1; r<aD.length; r++) {
+        let n = aD[r][0];
+        let v = String(aD[r][c]);
+        if(m[n]) {
+          if(v.includes("غیبت")) { m[n].ab++; m[n].sy -= 1; }
+          else if(v.includes("تاخیر")) {
+            m[n].la++;
+            let minsMatch = v.match(/\(([^)]+)\)/);
+            if (minsMatch) {
+              let minsStr = minsMatch[1].replace(/[^0-9۰-۹]/g, '');
+              m[n].lm += parseInt(toEnglishDigits(minsStr)) || 0;
+            }
+          }
+          else if(v.includes("حاضر")) { m[n].sy += 1; }
+          else if(v.includes("موجه")) { m[n].sy += 0.5; }
+        }
+      }
+    }
+  }
+  for(let n in m) {
+    shP.getRange(m[n].r, 2, 1, 3).setValues([[m[n].ab, m[n].la, m[n].sy + m[n].ma]]);
+    // Always check for the new column and set total minutes
+    let headers = shP.getRange(1, 1, 1, shP.getLastColumn()).getValues()[0];
+    let lmIdx = headers.indexOf("مجموع_دقایق_تاخیر");
+    if (lmIdx !== -1) {
+      shP.getRange(m[n].r, lmIdx + 1).setValue(m[n].lm);
+    }
+  }
 }
-
 function getSystemSettings(ss) {
   const sh = ss.getSheetByName(CONFIG.SHEETS.SETTINGS);
   if(!sh) return {};
@@ -406,10 +447,15 @@ function saveSystemSettings(f) {
 
 function normalizeDateStr(d) {
   if(!d) return "";
-  let s = String(d).replace(/[۰-۹]/g, c => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(c)]);
+  let s = toEnglishDigits(String(d));
   let p = s.split('/');
   if(p.length !== 3) return s;
   return `${p[0]}/${p[1].padStart(2, '0')}/${p[2].padStart(2, '0')}`;
+}
+
+function toEnglishDigits(str) {
+  if (typeof str !== 'string') str = String(str);
+  return str.replace(/[۰-۹]/g, c => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(c)]);
 }
 
 function getTodayStr() { return normalizeDateStr(new Date().toLocaleDateString('fa-IR')); }
@@ -542,7 +588,10 @@ function submitAttendance(data) {
         let statusText = "";
         if(rec.status === 'Present') statusText = "حاضر";
         else if(rec.status === 'Absent') statusText = "غیبت";
-        else if(rec.status === 'Late') statusText = `تاخیر (${rec.min} دقیقه)`;
+        else if(rec.status === 'Late') {
+          let mins = toEnglishDigits(String(rec.min || "0")).replace(/[^0-9]/g, '');
+          statusText = `تاخیر (${mins} دقیقه)`;
+        }
         else if(rec.status === 'Excused') statusText = "موجه";
 
         shA.getRange(r, colIndex).setValue(statusText);
@@ -551,7 +600,6 @@ function submitAttendance(data) {
     updateCalculations(ss);
     return {success: true, msg: "✅ حضور و غیاب ثبت شد."};
 }
-
 function saveNote(d,t){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.NOTES).appendRow([d,t]);return{success:true,msg:"یادداشت ذخیره شد"};}
 function addStudent(n){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE).appendRow([n,0,0,0,"ثبت نام","",0]);return{success:true};}
 function delStudent(n){const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=0;i<d.length;i++)if(d[i][0]==n){sh.deleteRow(i+1);return{success:true};}}
@@ -603,7 +651,50 @@ function getTrendData(ss) {
   }
   return {labels, data: trend, details};
 }
-function getStudentDetails(n){ const ss=SpreadsheetApp.getActiveSpreadsheet(); const shP=ss.getSheetByName(CONFIG.SHEETS.PEOPLE); const shA=ss.getSheetByName(CONFIG.SHEETS.ATT); if(!shA) return {history:[],stats:{p:0,a:0,l:0,e:0},scores:{system:0,manual:0,total:0},growth:{labels:[],data:[]}}; const pD=shP.getDataRange().getValues(); let m=0; const rP=pD.find(r=>r[0]==n); if(rP) m=Number(rP[6])||0; const d=shA.getDataRange().getValues(); let h=[],s={p:0,a:0,l:0,e:0},gl=[],gd=[],sys=0,ri=-1; for(let i=1;i<d.length;i++)if(d[i][0]==n){ri=i;break} if(ri>-1){ const he=d[0]; for(let c=1;c<he.length;c++){ let v=String(d[ri][c]),da=(he[c]instanceof Date)?he[c].toLocaleDateString('fa-IR'):String(he[c]); if(v&&v!=""){ if(v.includes("حاضر")){sys++;s.p++}else if(v.includes("غیبت")){sys--;s.a++}else if(v.includes("تاخیر")){s.l++} gl.push(da); gd.push(sys+m) } } for(let c=he.length-1;c>=1;c--){ let v=String(d[ri][c]),da=(he[c]instanceof Date)?he[c].toLocaleDateString('fa-IR'):String(he[c]); if(v!="") h.push({date:da,status:v}) } } return {history:h,stats:s,scores:{system:sys,manual:m,total:sys+m},growth:{labels:gl,data:gd}}; }
+function getStudentDetails(n) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
+  const shA = ss.getSheetByName(CONFIG.SHEETS.ATT);
+  if (!shA) return { history: [], stats: { p: 0, a: 0, l: 0, e: 0, lm: 0 }, scores: { system: 0, manual: 0, total: 0 }, growth: { labels: [], data: [] } };
+
+  const pD = shP.getDataRange().getValues();
+  let m = 0;
+  const rP = pD.find(r => r[0] == n);
+  if (rP) m = Number(rP[6]) || 0;
+
+  const d = shA.getDataRange().getValues();
+  let h = [], s = { p: 0, a: 0, l: 0, e: 0, lm: 0 }, gl = [], gd = [], sys = 0, ri = -1;
+
+  for (let i = 1; i < d.length; i++) if (d[i][0] == n) { ri = i; break }
+
+  if (ri > -1) {
+    const he = d[0];
+    for (let c = 1; c < he.length; c++) {
+      let v = String(d[ri][c]), da = (he[c] instanceof Date) ? he[c].toLocaleDateString('fa-IR') : String(he[c]);
+      if (v && v != "") {
+        if (v.includes("حاضر")) { sys++; s.p++ }
+        else if (v.includes("غیبت")) { sys--; s.a++ }
+        else if (v.includes("تاخیر")) {
+          s.l++;
+          let minsMatch = v.match(/\(([^)]+)\)/);
+          if (minsMatch) {
+            let minsStr = minsMatch[1].replace(/[^0-9۰-۹]/g, '');
+            s.lm += parseInt(toEnglishDigits(minsStr)) || 0;
+          }
+        }
+        else if (v.includes("موجه")) { s.e++ }
+
+        gl.push(normalizeDateStr(da));
+        gd.push(sys + m)
+      }
+    }
+    for (let c = he.length - 1; c >= 1; c--) {
+      let v = String(d[ri][c]), da = (he[c] instanceof Date) ? he[c].toLocaleDateString('fa-IR') : String(he[c]);
+      if (v != "") h.push({ date: normalizeDateStr(da), status: v })
+    }
+  }
+  return { history: h, stats: s, scores: { system: sys, manual: m, total: sys + m }, growth: { labels: gl, data: gd } };
+}
 function getStudentMIProfile(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shLogs = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
