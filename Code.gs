@@ -55,7 +55,7 @@ function getAppData() {
           score: Number(pData[i][3]) || 0,
           manualScore: Number(pData[i][6]) || 0,
           image: fixUrl(pData[i][5]),
-          fire: (Number(pData[i][1]) === 0 && Number(pData[i][2]) === 0)
+          fire: (Number(pData[i][1]) === 0)
         });
       }
     }
@@ -63,12 +63,15 @@ function getAppData() {
   // مرتب‌سازی دانش‌آموزان بر اساس امتیاز (بیشترین بالا)
   students.sort((a, b) => b.score - a.score);
 
+  const maxScore = students.length > 0 ? students[0].score : -1;
+  const topStudents = students.filter(s => s.score === maxScore && maxScore > 0).map(s => s.name).join(" - ");
+
   const plans = getPlans(ss);
 
   return {
     students: students,
     trend: getTrendData(ss),
-    topStudent: students.length > 0 ? students[0].name : "---",
+    topStudent: topStudents || "---",
     notes: getNotesList(ss),
     plans: plans,
     settings: getSystemSettings(ss),
@@ -246,6 +249,35 @@ function editMessageText(token, chatId, messageId, text) { try { UrlFetchApp.fet
 function editMessageReplyMarkup(token, chatId, messageId, replyMarkup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: replyMarkup }) }); } catch(e){} }
 function sendTelegramMsgWithBtn(token, chatId, text, markup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, text: text, reply_markup: markup, parse_mode: 'Markdown' }) }); } catch(e){} }
 
+function notifyAdmins(msg) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const settings = getSystemSettings(ss);
+  const token = settings.BOT_TOKEN;
+  const chats = String(settings.ADMIN_CHAT_IDS || "").split(",").map(id => id.trim()).filter(id => id !== "");
+  if(!token || chats.length === 0) return;
+
+  chats.forEach(chatId => {
+    try {
+      UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({
+          chat_id: chatId,
+          text: msg,
+          parse_mode: 'Markdown'
+        })
+      });
+    } catch(e) {
+      Logger.log("NotifyAdmins Error for " + chatId + ": " + e.message);
+    }
+  });
+}
+
+function testTelegramConnection() {
+  notifyAdmins("🚀 اتصال سیستم مدیریت کلاس به تلگرام با موفقیت برقرار شد.");
+  return {success: true, msg: "پیام تست ارسال شد. لطفاً تلگرام خود را چک کنید."};
+}
+
 // ==========================================
 
 function checkDailyReminders() {
@@ -325,8 +357,22 @@ function getCombinedHistory(ss) {
 function saveManualLog(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.SHEETS.ARCHIVE_LOGS);
-  if(sh) sh.appendRow([data.date, data.type, data.title, data.details]);
-  return {success: true, msg: "✅ ثبت شد."};
+  if (sh) sh.appendRow([data.date, data.type, data.title, data.details]);
+
+  let typeName = data.type === 'grouping' ? '👥 گروه‌بندی' : '📝 فعالیت آزاد';
+  let detailsText = data.details;
+  if (data.type === 'grouping') {
+    try {
+      let d = JSON.parse(data.details);
+      if (d.isMultiGroup) {
+        detailsText = d.groups.map(g => `${g.name}: ${g.members.join('، ')}`).join('\n');
+      }
+    } catch (e) { }
+  }
+
+  notifyAdmins(`${typeName}\n\n📌 عنوان: ${data.title}\n📅 تاریخ: ${data.date}\n\n🔍 جزئیات:\n${detailsText}`);
+
+  return { success: true, msg: "✅ ثبت شد." };
 }
 
 function checkSheets(ss) {
@@ -552,6 +598,20 @@ function savePlan(id, date, title, priority, sin, modules) {
         if(newRows.length > 0) shE.getRange(shE.getLastRow()+1, 1, newRows.length, 8).setValues(newRows);
     } catch(e) {}
 
+    // Telegram Notification for Shopping List
+    let buyList = [];
+    try {
+        const mods = JSON.parse(modules);
+        mods.forEach(m => {
+            if(m.items) m.items.forEach(it => { if(it.type === 'buy') buyList.push(it.name); });
+        });
+    } catch(e) {}
+
+    let buyMsg = `📚 *طرح درس جدید ثبت شد*\n\n📌 عنوان: ${title}\n📅 تاریخ اجرا: ${date}`;
+    if(buyList.length > 0) buyMsg += `\n\n🛒 *لیست خرید لوازم:* \n- ${buyList.join('\n- ')}`;
+
+    notifyAdmins(buyMsg);
+
     return {success: true, msg: "✅ طرح درس با موفقیت ذخیره شد."};
 }
 
@@ -577,6 +637,8 @@ function submitAttendance(data) {
     let nameRowMap = {};
     for(let i=1; i<rows.length; i++) nameRowMap[rows[i][0]] = i + 1;
 
+    let p = [], a = [], l = [], e = [];
+
     data.records.forEach(rec => {
         let r = nameRowMap[rec.name];
         if(!r) {
@@ -586,25 +648,69 @@ function submitAttendance(data) {
         }
 
         let statusText = "";
-        if(rec.status === 'Present') statusText = "حاضر";
-        else if(rec.status === 'Absent') statusText = "غیبت";
+        if(rec.status === 'Present') {
+          statusText = "حاضر";
+          p.push(rec.name);
+        }
+        else if(rec.status === 'Absent') {
+          statusText = "غیبت";
+          a.push(rec.name);
+        }
         else if(rec.status === 'Late') {
           let mins = toEnglishDigits(String(rec.min || "0")).replace(/[^0-9]/g, '');
           statusText = `تاخیر (${mins} دقیقه)`;
+          l.push(`${rec.name} (${mins}د)`);
         }
-        else if(rec.status === 'Excused') statusText = "موجه";
+        else if(rec.status === 'Excused') {
+          statusText = "موجه";
+          e.push(rec.name);
+        }
 
         shA.getRange(r, colIndex).setValue(statusText);
     });
 
+    // Telegram Notification
+    let summary = `📊 *گزارش حضور و غیاب* (${today})\n`;
+    if(p.length) summary += `\n✅ حاضرین: ${p.join('، ')}`;
+    if(a.length) summary += `\n❌ غایبین: ${a.join('، ')}`;
+    if(l.length) summary += `\n⏰ تاخیر: ${l.join('، ')}`;
+    if(e.length) summary += `\n🏳️ موجه: ${e.join('، ')}`;
+
+    notifyAdmins(summary);
+
     updateCalculations(ss);
     return {success: true, msg: "✅ حضور و غیاب ثبت شد."};
 }
-function saveNote(d,t){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.NOTES).appendRow([d,t]);return{success:true,msg:"یادداشت ذخیره شد"};}
+function saveNote(d, t) {
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.NOTES).appendRow([d, t]);
+  notifyAdmins(`📒 *یادداشت جدید جلسه*\n\n📅 تاریخ: ${d}\n\n📝 متن:\n${t}`);
+  return { success: true, msg: "یادداشت ذخیره شد" };
+}
 function addStudent(n){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE).appendRow([n,0,0,0,"ثبت نام","",0]);return{success:true};}
 function delStudent(n){const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=0;i<d.length;i++)if(d[i][0]==n){sh.deleteRow(i+1);return{success:true};}}
-function addManualScore(n,p){const ss=SpreadsheetApp.getActiveSpreadsheet();const sh=ss.getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=1;i<d.length;i++)if(d[i][0]==n){sh.getRange(i+1,7).setValue((Number(d[i][6])||0)+Number(p));updateCalculations(ss);return{success:true,msg:"✅ امتیاز ثبت شد"}}; return {success:false};}
-function submitMILog(sn,it,bh,sc){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.MI_LOGS).appendRow([new Date(),sn,it,bh,sc]);return{success:true,msg:"✅ ثبت شد"};}
+function addManualScore(n, p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
+  const d = sh.getDataRange().getValues();
+  for (let i = 1; i < d.length; i++) {
+    if (d[i][0] == n) {
+      sh.getRange(i + 1, 7).setValue((Number(d[i][6]) || 0) + Number(p));
+      updateCalculations(ss);
+      notifyAdmins(`⭐ *ثبت امتیاز دستی*\n\n👤 متربی: ${n}\n📈 مقدار: ${p > 0 ? '+' : ''}${p}\n🏆 مجموع امتیازات: ${(Number(d[i][3]) || 0) + Number(p)}`);
+      return { success: true, msg: "✅ امتیاز ثبت شد" };
+    }
+  }
+  return { success: false };
+}
+function submitMILog(sn, it, bh, sc) {
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.MI_LOGS).appendRow([new Date(), sn, it, bh, sc]);
+
+  let statusText = sc === 1 ? "✅ مثبت" : (sc === -1 ? "❌ منفی" : "⚪ خنثی");
+  let msg = `🧠 *ثبت هوش چندگانه*\n\n👤 متربی: ${sn}\n📌 نوع: ${it}\n🔍 رفتار: ${bh}\n📈 وضعیت: ${statusText}`;
+  notifyAdmins(msg);
+
+  return { success: true, msg: "✅ ثبت شد" };
+}
 function deletePlan(id){const ss=SpreadsheetApp.getActiveSpreadsheet();const sh=ss.getSheetByName(CONFIG.SHEETS.PLANS);const d=sh.getDataRange().getValues();for(let i=1;i<d.length;i++)if(String(d[i][5]).trim()==String(id).trim()){sh.deleteRow(i+1);const shE=ss.getSheetByName(CONFIG.SHEETS.ESSENTIALS);const edat=shE.getDataRange().getValues();for(let j=edat.length-1;j>=1;j--)if(String(edat[j][0]).trim()==String(id).trim())shE.deleteRow(j+1);return{success:true,msg:"🗑 طرح درس حذف شد"}}return{success:false}}
 function updateStudentProfile(data){
   const ss=SpreadsheetApp.getActiveSpreadsheet();

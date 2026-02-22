@@ -274,7 +274,7 @@
     <!-- DASHBOARD -->
     <div id="view-dash" class="view active">
       <div class="card" style="text-align:center; background: linear-gradient(to bottom, #f0f4ff, #ffffff);">
-        <small style="color:#4f46e5; font-weight:bold;">متربی برتر هفته 🥇</small>
+        <small style="color:#4f46e5; font-weight:bold;">متربی برتر 🥇</small>
         <div style="font-size:1.3rem; font-weight:bold; color:var(--primary); margin-top:8px;" id="top-student">...</div>
       </div>
       <div class="card">
@@ -433,6 +433,7 @@
         <label>توکن ربات تلگرام:</label><input type="text" id="st-token">
         <label>آیدی عددی مدیران (با کاما):</label><input type="text" id="st-admin" placeholder="مثلاً: 12345,67890">
         <button class="btn btn-blue" onclick="saveSettings()" style="margin-top:15px;">💾 ذخیره تنظیمات</button>
+        <button class="btn btn-outline" onclick="testTelegram()" style="margin-top:10px; border-color:#8b5cf6; color:#8b5cf6;">🔔 تست اتصال تلگرام</button>
       </div>
     </div>
 
@@ -882,6 +883,7 @@
   function filterNotes(t){ document.querySelectorAll('.note-item').forEach(i=> i.style.display=i.innerText.includes(t)?'block':'none'); }
   function filterAtt(t){ document.querySelectorAll('#att-list .dash-item').forEach(i=> i.style.display=i.innerText.includes(t)?'flex':'none'); }
   function saveSettings(){ const d={ BOT_TOKEN: document.getElementById('st-token').value, ADMIN_CHAT_IDS: document.getElementById('st-admin').value }; showLoading(); google.script.run.withSuccessHandler(r=>{hideLoading(); showToast(r.msg); fetchData();}).saveSystemSettings(d); }
+  function testTelegram(){ showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); }).testTelegramConnection(); }
   function addItemToMod(btn, id, ty){ let inp = btn.parentElement.querySelector('input'); let val = inp.value.trim(); if(!val) return; let ic = ty=='buy'?'🛒':'✅'; document.getElementById('tags-'+id).insertAdjacentHTML('beforeend', `<span class="mat-chip ${ty}" data-type="${ty}"><span>${ic} ${val}</span><span style="cursor:pointer; margin-right:6px;" onclick="this.parentElement.remove()">×</span></span>`); inp.value=""; }
   function delPlan(id){ google.script.run.withSuccessHandler(fetchData).deletePlan(id); }
   function saveProfile(){
