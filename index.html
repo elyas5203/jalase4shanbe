@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <title>مدیریت هوشمند کلاس</title>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root { --primary: #4f46e5; --bg: #f8fafc; --card-bg: #ffffff; --text: #1e293b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; }
+    body.dark-mode { --primary: #6366f1; --bg: #0f172a; --card-bg: #1e293b; --text: #f1f5f9; --border: #334155; }
+
+    html, body { height: 100%; margin: 0; padding: 0; overflow-x: hidden; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+    body { font-family: 'Vazirmatn', sans-serif; background: var(--bg); color: var(--text); padding-bottom: 90px; -moz-font-feature-settings: "ss01"; -webkit-font-feature-settings: "ss01"; font-feature-settings: "ss01"; }
+
+    input, select, textarea { width: 100%; padding: 13px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit; box-sizing: border-box; font-size: 16px; margin-bottom: 12px; }
+    textarea { resize: none; overflow-y: auto; min-height: 55px; max-height: 160px; line-height: 1.5; }
+
+    .btn { width: 100%; padding: 15px; border: none; border-radius: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; color: white; transition: 0.3s; }
+    .btn-blue { background: var(--primary); } .btn-green { background: var(--success); } .btn-red { background: var(--danger); } .btn-purple { background: #8b5cf6; }
+    .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+    .btn-outline:hover { background: var(--primary); color: white; }
+    .btn:active { transform: scale(0.97); }
+
+    /* Lightbox */
+    #lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.94); z-index: 5000; display: none; justify-content: center; align-items: center; cursor: zoom-out; animation: fadeIn 0.3s; }
+    #lightbox img { max-width: 95%; max-height: 88vh; border-radius: 12px; box-shadow: 0 0 50px rgba(0,0,0,0.7); }
+    #lightbox .close-lb { position: absolute; top: 25px; right: 25px; color: white; font-size: 2.5rem; }
+
+    /* Modals */
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 15px; backdrop-filter: blur(5px); }
+    .modal-box { background: var(--card-bg); width: 100%; max-width: 520px; max-height: 92vh; border-radius: 28px; overflow-y: auto !important; padding: 24px; box-shadow: 0 25px 50px rgba(0,0,0,0.25); }
+
+    /* !!! اصلاح مهم: حذف !important برای اینکه جاوااسکریپت بتواند آن را نمایش دهد !!! */
+    #confirm-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 7000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+
+    .confirm-box { background: var(--card-bg); width: 85%; max-width: 350px; padding: 25px; border-radius: 20px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.3); animation: scaleIn 0.3s; }
+    @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    @keyframes zoomIn { from { transform: scale(0); } to { transform: scale(1); } }
+
+    /* Toast Notifications */
+    .toast-container { position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; width: 90%; max-width: 400px; }
+    .toast { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); color: var(--text); padding: 14px 24px; border-radius: 18px; box-shadow: 0 15px 35px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 12px; animation: toastIn 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28), toastOut 0.5s 2.5s forwards; border-right: 6px solid var(--primary); font-size: 0.98rem; pointer-events: auto; font-weight: 600; }
+    .toast.success { border-right-color: var(--success); }
+    .toast.error { border-right-color: var(--danger); }
+    @keyframes toastIn { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes toastOut { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-20px); opacity: 0; } }
+
+    .header { background: linear-gradient(135deg, var(--primary), #818cf8); color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 800; height: 65px; box-shadow: 0 5px 20px rgba(0,0,0,0.15); }
+    .menu-btn { font-size: 1.9rem; cursor: pointer; }
+
+    .container { padding: 18px; max-width: 600px; margin: 0 auto; box-sizing: border-box; overflow-y: visible !important; }
+    .card { background: var(--card-bg); border-radius: 22px; padding: 18px; margin-bottom: 18px; box-shadow: 0 5px 15px rgba(0,0,0,0.06); }
+
+    .sidebar { position: fixed; top: 0; right: 0; width: 290px; height: 100%; background: var(--card-bg); z-index: 1500; transform: translateX(100%); transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: -10px 0 30px rgba(0,0,0,0.15); padding: 20px; display: flex; flex-direction: column; overflow-y: auto; }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1400; display: none; backdrop-filter: blur(2px); }
+    .sidebar-overlay.open { display: block; }
+
+    .menu-item { padding: 16px; border-radius: 14px; margin-bottom: 6px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--text); transition: 0.2s; }
+    .menu-item:hover { background: var(--bg); }
+    .menu-item.active { background: #e0f2fe; color: var(--primary); font-weight: bold; }
+
+    /* Bottom Navigation Bar */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 70px;
+      background: var(--card-bg);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      z-index: 900;
+      box-shadow: 0 -5px 20px rgba(0,0,0,0.05);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: 0.3s;
+      width: 100%;
+      height: 100%;
+    }
+
+    .nav-item i { font-size: 1.4rem; margin-bottom: 4px; transition: 0.3s; }
+    .nav-item.active { color: var(--primary); font-weight: bold; }
+    .nav-item.active i { transform: translateY(-2px); }
+
+    .profile-avatar { width: 115px; height: 115px; border-radius: 50%; object-fit: cover; border: 5px solid var(--border); margin: 0 auto 15px; display: block; cursor: pointer; transition: 0.3s; box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+    .profile-avatar:hover { transform: scale(1.05); border-color: var(--primary); }
+
+    .tabs { display: flex; background: var(--bg); padding: 6px; border-radius: 14px; margin-bottom: 18px; overflow-x: auto; }
+    .tab { flex: 1; text-align: center; padding: 12px; border-radius: 10px; cursor: pointer; color: #64748b; font-size: 0.95rem; transition: 0.3s; white-space: nowrap; }
+    .tab.active { background: var(--card-bg); color: var(--primary); font-weight: bold; box-shadow: 0 3px 10px rgba(0,0,0,0.05); }
+    .tab-content { display: none; } .tab-content.active { display: block; animation: fadeIn 0.4s; }
+
+    .dash-item { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); cursor: pointer; position: relative; overflow: hidden; }
+    .avatar-sm { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; pointer-events: none; }
+    .score-badge { background: #e0f2fe; color: var(--primary); padding: 4px 12px; border-radius: 12px; font-size: 0.9rem; font-weight: bold; }
+
+    .plan-card { background: var(--card-bg); border-radius: 18px; margin-bottom: 14px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.04); transition: border-color 0.3s; }
+    .plan-card.highlight { border: 2px solid var(--primary); animation: pulse 1s; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); } 100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); } }
+
+    /* تم‌بندی رنگی فعالیت‌ها */
+    .plan-card.game { background-color: #f0fdf4; border-color: #bbf7d0; } /* سبز */
+    .plan-card.story { background-color: #fefce8; border-color: #fef08a; } /* زرد */
+    .plan-card.hazrat { background-color: #f0f9ff; border-color: #bae6fd; } /* آبی */
+
+    .plan-header { padding: 18px; display: flex; justify-content: space-between; cursor: pointer; transition: 0.2s; }
+    .plan-header:hover { background: rgba(0,0,0,0.02); }
+    .plan-body { display: none; padding: 18px; border-top: 1px solid var(--border); background: rgba(255,255,255,0.5); }
+    .plan-card.open .plan-body { display: block; animation: slideIn 0.3s; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .mat-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 10px; margin: 4px; font-size: 0.88rem; font-weight: 500; }
+    .mat-chip.have { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+    .mat-chip.buy { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+    .note-item { border-bottom: 1px solid var(--border); padding: 12px 0; }
+    .note-head { font-weight: bold; display: flex; justify-content: space-between; cursor: pointer; background: var(--bg); padding: 12px; border-radius: 12px; }
+    .note-body { display: none; padding: 14px; white-space: pre-wrap; font-size: 0.98rem; line-height: 1.7; }
+    .note-item.open .note-body { display: block; }
+
+    /* Skeleton Loading */
+    #skeleton-screen { position: fixed; inset: 0; background: var(--bg); z-index: 9998; padding: 70px 20px 20px; overflow-y: auto; display: none; }
+    .sk-card { background: #fff; border-radius: 20px; height: 120px; margin-bottom: 15px; position: relative; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }
+    .sk-card::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; transform: translateX(-100%); background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0, rgba(0, 0, 0, 0.05) 20%, rgba(0, 0, 0, 0.05) 60%, rgba(255, 255, 255, 0)); animation: shimmer 2s infinite; }
+    @keyframes shimmer { 100% { transform: translateX(100%); } }
+
+    #overlay { display: none; }
+
+    .fab { position: fixed; bottom: 85px; left: 25px; width: 60px; height: 60px; background: var(--primary); color: white; border-radius: 50%; display: none; align-items: center; justify-content: center; font-size: 26px; box-shadow: 0 10px 25px rgba(79,70,229,0.45); z-index: 900; transition: 0.3s; }
+    .fab:active { transform: scale(0.92); }
+
+    .view { display: none; } .view.active { display: block; animation: fadeIn 0.4s; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+    .chip-ui { padding: 8px 16px; border-radius: 22px; font-size: 0.9rem; cursor: pointer; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); display: inline-block; margin: 5px; transition: 0.3s; }
+    .chip-ui:hover { background: var(--primary); color: white; }
+
+    .archive-item { background: var(--bg); padding: 15px; border-radius: 12px; margin-bottom: 10px; border-right: 4px solid var(--primary); }
+    .archive-meta { font-size: 0.8rem; opacity: 0.7; margin-top: 5px; display: flex; justify-content: space-between; }
+
+    .acc-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; overflow: hidden; transition: 0.2s; }
+
+    .acc-card.game { border-right: 4px solid #10b981; background: #f0fdf4; }
+    .acc-card.story { border-right: 4px solid #eab308; background: #fefce8; }
+    .acc-card.hazrat { border-right: 4px solid #3b82f6; background: #f0f9ff; }
+
+    .acc-header { padding: 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: transparent; font-weight: bold; }
+    .acc-header:hover { background: rgba(0,0,0,0.02); }
+    .acc-body { display: none; padding: 15px; border-top: 1px solid var(--border); font-size: 0.95rem; line-height: 1.6; color: #475569; }
+    .acc-card.open { border-color: var(--primary); background: #fdfdfd; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .acc-card.open .acc-header { color: var(--primary); }
+    .acc-card.open .acc-body { display: block; animation: slideIn 0.2s; }
+
+    .tool-btn { background: var(--bg); border: 2px solid var(--border); border-radius: 20px; padding: 20px; text-align: center; cursor: pointer; transition: 0.3s; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .tool-btn i { font-size: 2.5rem; color: var(--primary); }
+    .tool-btn:hover { border-color: var(--primary); transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.05); }
+
+    .modern-timer { font-size: 5rem; font-weight: 800; color: var(--primary); letter-spacing: 2px; text-shadow: 0 2px 10px rgba(79,70,229,0.2); margin: 20px 0; font-family: 'Courier New', Courier, monospace; }
+    .timer-input-group { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; }
+    .timer-input-group input { width: 70px; text-align: center; font-size: 1.2rem; font-weight: bold; }
+
+    .student-select-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; margin-bottom: 15px; max-height: 350px; overflow-y: auto; padding: 5px; }
+    .student-select-card { background: var(--bg); border: 2px solid var(--border); border-radius: 12px; padding: 10px; text-align: center; cursor: pointer; transition: 0.2s; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .student-select-card.selected { border-color: var(--success); background: #f0fdf4; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(16,185,129,0.2); }
+    .student-select-card img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+    .student-select-card span { font-size: 0.85rem; font-weight: bold; }
+    .student-select-card i { display: none; color: var(--success); font-size: 1.2rem; margin-top: -5px; }
+    .student-select-card.selected i { display: block; animation: zoomIn 0.2s; }
+
+    .added-group-card { background: #fff; border: 1px solid var(--border); padding: 12px; border-radius: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; border-right: 4px solid var(--primary); }
+
+    .report-card-modal { background: #fff; padding: 0; overflow: hidden; }
+    .report-header { background: var(--primary); color: white; padding: 20px; text-align: center; }
+    .report-body { padding: 20px; overflow-y: auto; max-height: 70vh; }
+    .report-section { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+    .report-stat-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.95rem; }
+
+    @media print {
+      body { background: white !important; padding: 0 !important; margin: 0 !important; }
+      .header, .bottom-nav, .sidebar, .sidebar-overlay, .fab, .container, .modal, #confirm-modal, #lightbox { display: none !important; }
+      #report-modal { display: block !important; position: static !important; background: white !important; padding: 0 !important; margin: 0 !important; visibility: visible !important; }
+      .modal-box.report-card-modal { box-shadow: none !important; width: 100% !important; max-width: none !important; height: auto !important; margin: 0 !important; padding: 0 !important; border-radius: 0 !important; }
+      .report-body { max-height: none !important; overflow: visible !important; padding: 30px !important; }
+      #report-modal .btn { display: none !important; }
+      .report-header { padding: 30px !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="confirm-modal" style="display:none;"><div class="confirm-box"><h3 id="confirm-msg"></h3><div style="display:flex; gap:10px; margin-top:20px;" id="confirm-buttons"><button class="btn btn-green" id="confirm-yes">بله</button><button class="btn btn-red" id="confirm-no" onclick="closeConfirm()">خیر</button></div></div></div>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <div id="lightbox" onclick="this.style.display='none'"><span class="close-lb">✕</span><img id="lightbox-img" src=""></div>
+
+  <div id="skeleton-screen">
+      <div class="sk-card"></div>
+      <div class="sk-card"></div>
+      <div class="sk-card"></div>
+      <div class="sk-card"></div>
+  </div>
+
+  <div class="header">
+    <div class="menu-btn" onclick="toggleSidebar()">☰</div>
+    <h1 style="margin:0; font-size:1.2rem;" id="page-title">داشبورد</h1>
+    <div style="font-size:0.9rem; font-weight:bold; opacity:0.9;" id="header-date">...</div>
+  </div>
+
+  <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+  <div class="sidebar">
+    <h2 style="text-align:center; color:var(--primary); margin-top:10px;">مدیریت کلاس</h2>
+    <hr style="width:100%; opacity:0.1; margin:15px 0;">
+    <div class="menu-item active" onclick="nav('dash')"><i class="fas fa-chart-line"></i> داشبورد</div>
+    <div class="menu-item" onclick="nav('tools')"><i class="fas fa-toolbox"></i> جعبه ابزار کلاس</div>
+    <div class="menu-item" onclick="nav('profiles')"><i class="fas fa-user-graduate"></i> پروفایل‌ها</div>
+    <div class="menu-item" onclick="nav('plans')"><i class="fas fa-book-reader"></i> طرح درس</div>
+    <div class="menu-item" onclick="nav('archive')"><i class="fas fa-history"></i> آرشیو فعالیت‌ها</div>
+    <div class="menu-item" onclick="nav('att')"><i class="fas fa-check-double"></i> حضور و غیاب</div>
+    <div class="menu-item" onclick="nav('score')"><i class="fas fa-star-half-alt"></i> امتیازدهی</div>
+    <div class="menu-item" onclick="nav('notes')"><i class="fas fa-pen-nib"></i> یادداشت‌ها</div>
+    <div class="menu-item" onclick="nav('settings')"><i class="fas fa-user-cog"></i> تنظیمات</div>
+    <div class="menu-item" onclick="toggleDark()" style="margin-top:auto;"><i class="fas fa-moon"></i> حالت شب</div>
+  </div>
+
+  <div class="container">
+
+    <!-- DASHBOARD -->
+    <div id="view-dash" class="view active">
+      <div class="card" style="text-align:center; background: linear-gradient(to bottom, #f0f4ff, #ffffff);">
+        <small style="color:#4f46e5; font-weight:bold;">متربی برتر هفته 🥇</small>
+        <div style="font-size:1.3rem; font-weight:bold; color:var(--primary); margin-top:8px;" id="top-student">...</div>
+      </div>
+      <div class="card"><canvas id="mainChart" height="200"></canvas></div>
+      <div id="class-mi-section" class="card" style="display:none;">
+        <h3>📊 وضعیت هوش کل کلاس (میانگین)</h3>
+        <canvas id="classMIChart" height="200"></canvas>
+      </div>
+      <div class="card"><h3>📋 وضعیت کلی اعضا</h3><div id="dash-list"></div></div>
+    </div>
+
+    <!-- TOOLS -->
+    <div id="view-tools" class="view">
+        <div class="card">
+            <h3>🧰 ابزارهای کلاسی</h3>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                <div class="tool-btn" onclick="openTimer()">
+                    <i class="fas fa-stopwatch"></i>
+                    <span>تایمر / کرنومتر</span>
+                </div>
+                <div class="tool-btn" onclick="openManualGrouping()">
+                    <i class="fas fa-users-cog"></i>
+                    <span>ثبت گروه‌بندی دستی</span>
+                </div>
+                <div class="tool-btn" onclick="openFreeActivity()">
+                    <i class="fas fa-pen-fancy"></i>
+                    <span>ثبت فعالیت آزاد</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROFILES LIST -->
+    <div id="view-profiles" class="view">
+      <div class="card">
+        <h3>👥 مدیریت متربیان</h3>
+        <div style="display:flex; gap:10px; margin-bottom:15px;">
+          <input type="text" id="new-name" placeholder="نام متربی جدید..." style="margin:0;">
+          <button class="btn btn-blue" style="width:60px; margin:0;" onclick="addStudent()">+</button>
+        </div>
+        <div id="profiles-list"></div>
+      </div>
+    </div>
+
+    <!-- SINGLE PROFILE -->
+    <div id="view-single-profile" class="view">
+      <button onclick="nav('profiles')" class="btn btn-outline" style="margin-bottom:15px; width:auto; padding: 10px 20px;">
+        <i class="fas fa-arrow-right" style="margin-left:8px;"></i> بازگشت به لیست
+      </button>
+
+      <div class="card" style="text-align:center;">
+        <img src="" id="sp-img" class="profile-avatar" onclick="openLightbox(this.src)" title="کلیک برای بزرگ‌نمایی">
+        <h2 id="sp-name" style="margin:12px 0 6px;"></h2>
+        <div id="sp-score" class="score-badge">0 امتیاز</div>
+        <button class="btn btn-blue" style="margin-top:15px; font-size:0.9rem;" onclick="openReportCard()">📄 صدور کارنامه عملکرد</button>
+      </div>
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('info')">ℹ️ مشخصات</div>
+        <div class="tab" onclick="switchTab('mi')">🧠 هوش</div>
+        <div class="tab" onclick="switchTab('stats')">📊 آمار</div>
+      </div>
+      <div id="tab-info" class="tab-content active">
+        <div class="card">
+          <label>لینک مستقیم عکس:</label><input type="text" id="sp-input-img">
+          <label>بیوگرافی و توضیحات:</label><textarea id="sp-bio" oninput="autoGrow(this)"></textarea>
+          <label>یادداشت مخصوص والدین (برای کارنامه):</label><textarea id="sp-parent-note" oninput="autoGrow(this)" placeholder="این متن در کارنامه نمایش داده می‌شود..."></textarea>
+          <label>شماره‌های تماس:</label>
+          <div id="phones-container"></div>
+          <button class="btn btn-outline" style="padding:8px; font-size:0.85rem; margin-bottom:15px; width:auto;" onclick="addPhoneField()">➕ افزودن شماره تماس</button>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <input type="text" id="sp-dob" placeholder="تاریخ تولد">
+            <input type="text" id="sp-school" placeholder="مدرسه">
+          </div>
+          <label>ملاحظات پزشکی / خاص:</label><input type="text" id="sp-medical">
+          <button class="btn btn-green" onclick="saveProfile()" style="margin-top:15px;">💾 ذخیره تغییرات پروفایل</button>
+        </div>
+      </div>
+      <div id="tab-mi" class="tab-content">
+        <div class="card"><canvas id="sp-mi-chart"></canvas></div>
+        <div id="sp-mi-accordion"></div>
+      </div>
+      <div id="tab-stats" class="tab-content">
+        <div class="card"><h3>⏳ تاریخچه فعالیت‌ها</h3><div id="sp-mi-history" style="max-height:350px; overflow-y:auto;"></div></div>
+        <div class="card"><canvas id="sp-growth-chart" height="180"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ATTENDANCE -->
+    <div id="view-att" class="view">
+      <div class="card"><label>تاریخ جلسه امروز:</label><input type="text" id="att-date" class="to-persian" style="text-align:center; font-weight:bold; font-size:1.15rem;"></div>
+      <div class="card" style="padding:12px;"><input type="text" placeholder="🔍 جستجوی نام..." onkeyup="filterAtt(this.value)" style="margin:0;"></div>
+      <div class="card" id="att-list"></div>
+    </div>
+
+    <!-- PLANS -->
+    <div id="view-plans" class="view">
+      <div class="card"><h3>📚 مدیریت طرح درس‌های کامل</h3><button class="btn btn-blue" onclick="openPlanModal()" style="border-radius:20px;">➕ ثبت طرح درس جدید</button></div>
+      <div id="plans-list"></div>
+    </div>
+
+    <!-- ARCHIVE -->
+    <div id="view-archive" class="view">
+      <div class="card">
+        <h3>📂 آرشیو فعالیت‌های انجام شده</h3>
+        <p style="font-size:0.85rem; opacity:0.7;">مشاهده سوابق و گروه‌بندی‌ها</p>
+
+        <!-- Search Bar -->
+        <input type="text" id="archive-search" placeholder="🔍 جستجوی هوشمند در آرشیو..." onkeyup="filterArchive(this.value)" style="margin-bottom:15px; border-color:var(--primary);">
+
+        <div class="tabs" style="margin-top:10px; flex-wrap:wrap;">
+          <div class="tab active" onclick="renderArchive('grouping', this)">👥 گروه‌بندی</div>
+          <div class="tab" onclick="renderArchive('game', this)">🎲 بازی</div>
+          <div class="tab" onclick="renderArchive('story', this)">📖 داستان</div>
+          <div class="tab" onclick="renderArchive('yade_hazrat', this)">🕌 یاد حضرت</div>
+          <div class="tab" onclick="renderArchive('free_activity', this)">📝 آزاد</div>
+          <div class="tab" onclick="renderArchive('other', this)">🔹 سایر</div>
+        </div>
+        <div id="archive-list" style="max-height:60vh; overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <!-- NOTES -->
+    <div id="view-notes" class="view">
+      <div class="card">
+        <label>تاریخ یادداشت:</label><input type="text" id="note-date" class="to-persian" style="text-align:center;">
+        <textarea id="note-text" placeholder="متن یادداشت یا صورتجلسه امروز..." oninput="autoGrow(this)"></textarea>
+        <button class="btn btn-blue" onclick="saveNote()">💾 ذخیره یادداشت جلسه</button>
+      </div>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+          <h3 style="margin:0;">📒 سوابق یادداشت‌ها</h3>
+          <input type="text" placeholder="🔍 جستجو..." style="width:130px; margin:0;" onkeyup="filterNotes(this.value)">
+        </div>
+        <div id="notes-history"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="view-settings" class="view">
+      <div class="card">
+        <h3>⚙️ تنظیمات تلگرام و سیستم</h3>
+        <label>توکن ربات تلگرام:</label><input type="text" id="st-token">
+        <label>آیدی عددی مدیران (با کاما):</label><input type="text" id="st-admin" placeholder="مثلاً: 12345,67890">
+        <button class="btn btn-blue" onclick="saveSettings()" style="margin-top:15px;">💾 ذخیره تنظیمات</button>
+      </div>
+    </div>
+
+    <!-- SCORES -->
+    <div id="view-score" class="view"><div class="card"><h3>⭐ ثبت امتیاز تشویقی/انضباطی</h3><div id="score-list"></div></div></div>
+  </div>
+
+  <!-- BOTTOM NAVIGATION -->
+  <div class="bottom-nav">
+    <div class="nav-item active" id="bn-dash" onclick="nav('dash')"><i class="fas fa-chart-line"></i><span>داشبورد</span></div>
+    <div class="nav-item" id="bn-tools" onclick="nav('tools')"><i class="fas fa-toolbox"></i><span>ابزارها</span></div>
+    <div class="nav-item" id="bn-profiles" onclick="nav('profiles')"><i class="fas fa-user-graduate"></i><span>کلاس</span></div>
+    <div class="nav-item" id="bn-settings" onclick="nav('settings')"><i class="fas fa-cog"></i><span>تنظیمات</span></div>
+  </div>
+
+  <!-- MODAL: PLAN -->
+  <div class="modal" id="plan-modal">
+    <div class="modal-box">
+      <h3 style="margin-top:0;">📝 مدیریت طرح درس</h3>
+      <input type="hidden" id="p-id">
+      <label>تاریخ اجرای طرح:</label><input type="text" id="p-date" class="to-persian" style="text-align:center;">
+      <label>عنوان اصلی طرح:</label><input type="text" id="p-title" placeholder="عنوان جلسه">
+      <label>⏰ سین و زمان‌بندی برنامه:</label>
+      <textarea id="p-sin" placeholder="۱۸:۰۰ شروع برنامه..." oninput="autoGrow(this)"></textarea>
+
+      <div style="margin:15px 0;">
+        <label>افزودن بخش جدید:</label><br>
+        <span class="chip-ui" onclick="addModule('game')">🎲 بازی</span>
+        <span class="chip-ui" onclick="addModule('story')">📖 داستان</span>
+        <span class="chip-ui" onclick="addModule('yade_hazrat')">🕌 یاد حضرت</span>
+        <span class="chip-ui" onclick="addModule('trip')">🚌 اردو</span>
+        <span class="chip-ui" onclick="addModule('other')">📝 سایر</span>
+      </div>
+
+      <div id="modules-container"></div>
+
+      <label>اولویت یادآوری خرید:</label>
+      <select id="p-prio">
+        <option value="low">اولویت پایین 🟢</option>
+        <option value="mid">اولویت متوسط 🟡</option>
+        <option value="high">اولویت بالا 🔴</option>
+      </select>
+
+      <div style="display:flex; gap:12px; margin-top:25px;">
+        <button class="btn btn-blue" onclick="savePlan()">💾 ذخیره نهایی</button>
+        <button class="btn btn-red" onclick="document.getElementById('plan-modal').style.display='none'">❌ انصراف</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: TIMER -->
+  <div class="modal" id="timer-modal">
+      <div class="modal-box" style="text-align:center;">
+          <h3 style="margin-top:0;">⏱️ تایمر کلاس</h3>
+          <div class="modern-timer" id="timer-display">00:00</div>
+
+          <div class="timer-input-group">
+              <input type="number" id="t-min" placeholder="دقیقه" min="0">
+              <input type="number" id="t-sec" placeholder="ثانیه" min="0" max="59">
+              <button class="btn btn-purple" style="width:auto;" onclick="setCustomTimer()">تنظیم دستی</button>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:15px;">
+              <button class="btn btn-green" onclick="startTimer()">شروع ▶</button>
+              <button class="btn btn-red" onclick="stopTimer()">توقف ⏸</button>
+              <button class="btn btn-blue" onclick="resetTimer()">بازنشانی 🔄</button>
+          </div>
+          <button class="btn btn-red" onclick="document.getElementById('timer-modal').style.display='none'" style="margin-top:20px;">بستن</button>
+      </div>
+  </div>
+
+  <!-- MODAL: MANUAL GROUPING -->
+  <div class="modal" id="manual-grouping-modal">
+      <div class="modal-box">
+          <h3 style="margin-top:0;">👥 ثبت گروه‌بندی</h3>
+          <label>مدل گروه‌بندی (عنوان کلی):</label>
+          <input type="text" id="g-model" placeholder="مثلاً: مسابقه علمی">
+          <label>تاریخ:</label><input type="text" id="g-date" class="to-persian" style="text-align:center;">
+
+          <hr style="opacity:0.2; margin:15px 0;">
+
+          <label>نام گروه جدید:</label>
+          <div style="display:flex; gap:5px; margin-bottom:10px;">
+              <input type="text" id="g-current-name" placeholder="مثلاً: گروه شهید همت" style="margin:0;">
+              <button class="btn btn-green" style="width:auto; white-space:nowrap;" onclick="addGroupToList()">ثبت این گروه</button>
+          </div>
+
+          <p style="font-size:0.85rem; color:#666; margin-bottom:8px;">اعضای گروه را انتخاب کنید:</p>
+          <div class="student-select-grid" id="g-students-list"></div>
+
+          <div id="added-groups-container" style="margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
+              <small style="color:#666; display:block; margin-bottom:5px;">گروه‌های ساخته شده:</small>
+          </div>
+
+          <div style="display:flex; gap:10px; margin-top:15px;">
+              <button class="btn btn-blue" onclick="saveFinalGrouping()">💾 ذخیره نهایی همه گروه‌ها</button>
+              <button class="btn btn-red" onclick="document.getElementById('manual-grouping-modal').style.display='none'">بستن</button>
+          </div>
+      </div>
+  </div>
+
+  <!-- MODAL: FREE ACTIVITY -->
+  <div class="modal" id="free-activity-modal">
+      <div class="modal-box">
+          <h3 style="margin-top:0;">📝 ثبت فعالیت آزاد</h3>
+          <p style="font-size:0.9rem; color:#666;">برای ثبت کارهایی که در طرح درس نبودند.</p>
+          <label>تاریخ:</label><input type="text" id="fa-date" class="to-persian" style="text-align:center;">
+          <label>عنوان فعالیت:</label><input type="text" id="fa-title" placeholder="مثلاً: فوتبال در حیاط">
+          <label>توضیحات:</label><textarea id="fa-desc" placeholder="توضیحات مختصر..."></textarea>
+          <button class="btn btn-green" onclick="saveFreeActivityLog()">💾 ذخیره در آرشیو</button>
+          <button class="btn btn-red" onclick="document.getElementById('free-activity-modal').style.display='none'" style="margin-top:10px;">بستن</button>
+      </div>
+  </div>
+
+  <!-- MODAL: REPORT CARD -->
+  <div class="modal" id="report-modal">
+      <div class="modal-box report-card-modal">
+          <div class="report-header">
+              <h2 style="margin:0;">کارنامه عملکرد</h2>
+              <div id="report-date" style="font-size:0.9rem; opacity:0.9; margin-top:5px;"></div>
+          </div>
+          <div class="report-body" id="report-content"></div>
+          <div style="padding:20px; text-align:center; border-top:1px solid #eee;">
+              <button class="btn btn-blue" onclick="window.print()">🖨️ پرینت / ذخیره PDF</button>
+              <button class="btn btn-red" onclick="document.getElementById('report-modal').style.display='none'" style="margin-top:10px;">بستن</button>
+          </div>
+      </div>
+  </div>
+
+  <div class="fab" id="fab" onclick="submitData()">✓</div>
+
+<script>
+  let DB={}, TEMP={}, chartInst=null, miChart=null, growthChart=null, classMIChart=null, currentStudent=null;
+  let timerInterval=null, timerSec=0;
+  let confirmCallback = null;
+  let tempGroups = [];
+
+  // --- سیستم هوشمند اعلان و پیام ---
+  function showToast(msg, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      const icon = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle');
+      toast.innerHTML = `<i class="fas ${icon}"></i> <span>${msg}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+  }
+
+  function showAlert(msg, title = "پیام سیستم") {
+      document.getElementById('confirm-msg').innerText = msg;
+      document.getElementById('confirm-no').style.display = 'none';
+      document.getElementById('confirm-yes').innerText = 'متوجه شدم';
+      const modal = document.getElementById('confirm-modal');
+      modal.style.display = 'flex';
+      confirmCallback = () => {
+          document.getElementById('confirm-no').style.display = 'block';
+          document.getElementById('confirm-yes').innerText = 'بله';
+      };
+  }
+
+  // --- سیستم مودال تایید ---
+  function showConfirm(msg, callback) {
+      document.getElementById('confirm-msg').innerText = msg;
+      document.getElementById('confirm-no').style.display = 'block';
+      document.getElementById('confirm-yes').innerText = 'بله';
+      const modal = document.getElementById('confirm-modal');
+      modal.style.display = 'flex';
+      confirmCallback = callback;
+  }
+
+  document.getElementById('confirm-yes').onclick = function() {
+      document.getElementById('confirm-modal').style.display = 'none';
+      if(confirmCallback) confirmCallback();
+  };
+
+  function closeConfirm() {
+      document.getElementById('confirm-modal').style.display = 'none';
+  }
+
+  // --- توابع کمکی برای دکمه‌ها ---
+  function askDeletePlan(id, event) {
+      if(event) event.stopPropagation(); // جلوگیری از باز شدن آکاردئون
+      showConfirm('آیا مطمئن هستید که می‌خواهید این طرح درس را حذف کنید؟', function() {
+          delPlan(id);
+      });
+  }
+
+  function editPlanClick(id, event) {
+      if(event) event.stopPropagation(); // جلوگیری از باز شدن آکاردئون
+      editPlan(id);
+  }
+
+  function showLoading(){ document.getElementById('skeleton-screen').style.display='block'; }
+  function hideLoading(){ document.getElementById('skeleton-screen').style.display='none'; }
+  function toggleSidebar(){ document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('open'); }
+
+  function nav(v){
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    document.getElementById('view-'+v).classList.add('active');
+
+    document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+    const btn = document.getElementById('bn-'+v);
+    if(btn) btn.classList.add('active');
+
+    document.getElementById('fab').style.display=v=='att'?'flex':'none';
+    if(document.querySelector('.sidebar.open')) toggleSidebar();
+
+    const titles={'dash':'داشبورد','tools':'جعبه ابزار','profiles':'پروفایل‌ها','plans':'طرح درس','att':'حضور و غیاب','score':'امتیازدهی','notes':'یادداشت','settings':'تنظیمات', 'archive': 'آرشیو فعالیت‌ها', 'single-profile': 'پروفایل متربی'};
+    document.getElementById('page-title').innerText=titles[v] || 'مدیریت کلاس';
+    window.scrollTo(0,0);
+  }
+
+  function switchTab(t){
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
+    if(event && event.target) event.target.classList.add('active');
+    document.getElementById('tab-'+t).classList.add('active');
+  }
+
+  function toPersianNum(n) {
+      const f = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+      return String(n).replace(/[0-9]/g, w => f[+w]);
+  }
+
+  function openLightbox(src){
+    if(!src || src.includes('flaticon')) return;
+    document.getElementById('lightbox-img').src = src.replace("=s400", "=s2000");
+    document.getElementById('lightbox').style.display = 'flex';
+  }
+
+  function autoGrow(el) { el.style.height='auto'; el.style.height=(el.scrollHeight)+'px'; }
+
+  window.addEventListener('load', () => {
+    try {
+      const t=new Date().toLocaleDateString('fa-IR');
+      document.querySelectorAll('.to-persian').forEach(i=>i.value=t);
+      if(document.getElementById('header-date')) document.getElementById('header-date').innerText = t;
+      fetchData();
+    } catch(e) { console.error(e); }
+  });
+
+  function fetchData(){
+    showLoading();
+    google.script.run.withSuccessHandler(d=>{
+      DB=d;
+      hideLoading();
+      try { renderDash(); } catch(e) { console.error(e); }
+      try { renderProfiles(); } catch(e) { console.error(e); }
+      try { renderAtt(); } catch(e) { console.error(e); }
+      try { renderPlans(); } catch(e) { console.error(e); }
+      try { renderNotes(); } catch(e) { console.error(e); }
+      try { renderSettings(); } catch(e) { console.error(e); }
+      try { renderScoreList(); } catch(e) { console.error(e); }
+      try { renderArchive('grouping'); } catch(e) { console.error(e); }
+      // Fetch Class MI
+      google.script.run.withSuccessHandler(mi=>{ renderClassMI(mi); }).getClassMIData();
+    }).withFailureHandler(e => {
+        hideLoading();
+        showAlert("خطا در دریافت اطلاعات. لطفا اینترنت خود را چک کنید.\n" + e.message);
+    }).getAppData();
+  }
+
+  function renderDash(){
+    if(!DB.students) return;
+    document.getElementById('top-student').innerText = DB.topStudent;
+    if(typeof Chart !== 'undefined') {
+        if(chartInst) chartInst.destroy();
+        const verticalLinePlugin = {
+          id: 'verticalLine',
+          afterDraw: (chart) => {
+            if (chart.tooltip?._active?.length) {
+              const x = chart.tooltip._active[0].element.x;
+              const yAxis = chart.scales.y;
+              const ctx = chart.ctx;
+              ctx.save(); ctx.beginPath(); ctx.moveTo(x, yAxis.top); ctx.lineTo(x, yAxis.bottom); ctx.lineWidth = 1; ctx.strokeStyle = '#4f46e5'; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.restore();
+            }
+          }
+        };
+        chartInst = new Chart(document.getElementById('mainChart'), {
+          type:'line',
+          data:{labels:DB.trend.labels, datasets:[{label:'حضور %', data:DB.trend.data, borderColor:'#4f46e5', tension:0.35, fill:true, backgroundColor:'rgba(79,70,229,0.1)'}]},
+          options:{
+            interaction: { mode: 'index', intersect: false },
+            plugins:{
+              legend:{display:false},
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    let d = (DB.trend.details && DB.trend.details[ctx.dataIndex]) || {};
+                    return [`حضور: ${ctx.raw}%`, `✅ حاضر: ${d.p || 0}`, `❌ غایب: ${d.a || 0}`, `⏰ تاخیر: ${d.l || 0}`, `🏳️ موجه: ${d.e || 0}`];
+                  }
+                }
+              }
+            },
+            scales:{y:{beginAtZero:true, max:100}}
+          },
+          plugins: [verticalLinePlugin]
+        });
+    }
+    let h = "";
+    DB.students.forEach(s=>{
+      h += `<div class="dash-item" onclick="openProfile('${s.name}')">
+        <div style="display:flex; align-items:center; gap:12px;"><img src="${s.image}" class="avatar-sm"><b>${s.name} ${s.fire?'🔥':''}</b></div>
+        <span class="score-badge">${toPersianNum(s.score)}</span>
+      </div>`;
+    });
+    document.getElementById('dash-list').innerHTML = h;
+  }
+
+  function renderProfiles(){
+    let h="";
+    if (DB.students && DB.students.length > 0) {
+      DB.students.forEach(s=> h+=`<div class="dash-item" onclick="openProfile('${s.name}')"><span>${s.name}</span><span style="opacity:0.4;">➔</span></div>`);
+    } else {
+      h = "<p style='text-align:center;color:#888;'>هنوز متربی ثبت نشده است.</p>";
+    }
+    document.getElementById('profiles-list').innerHTML=h;
+  }
+
+  function renderAtt(){
+    let h = "";
+    if (DB.students) {
+      DB.students.forEach(s=>{
+        if(!TEMP[s.name]) TEMP[s.name]={s:'Present', m:0};
+        let st = TEMP[s.name].s;
+        let bg = st=='Present'?'#dcfce7':(st=='Absent'?'#fee2e2':(st=='Late'?'#fef3c7':'#e0f2fe'));
+        h += `<div class="dash-item" style="cursor:default;">
+          <div style="display:flex; align-items:center; gap:12px;"><img src="${s.image}" class="avatar-sm"><b>${s.name}</b></div>
+          <select style="width:110px; background:${bg}; margin:0; font-weight:bold; border-radius:10px;" onchange="chSt('${s.name}', this)">
+            <option value="Present" ${st=='Present'?'selected':''}>حاضر</option>
+            <option value="Absent" ${st=='Absent'?'selected':''}>غیبت</option>
+            <option value="Late" ${st=='Late'?'selected':''}>تاخیر</option>
+            <option value="Excused" ${st=='Excused'?'selected':''}>موجه</option>
+          </select>
+        </div>`;
+      });
+    }
+    document.getElementById('att-list').innerHTML = h;
+  }
+
+  function renderPlans(){
+    let h = "";
+    if (DB.plans && DB.plans.length > 0) {
+      DB.plans.forEach(p=>{
+        let mods = [];
+        try { mods = JSON.parse(p.modules||"[]"); } catch(e) {}
+        let mHtml = p.sin?`<div style="white-space:pre-wrap; background:#f1f5f9; padding:12px; border-radius:12px; font-size:0.9rem; margin-bottom:15px; line-height:1.6; border-right:5px solid #cbd5e1;">${p.sin}</div>`:"";
+        let mainType = "other";
+
+        mods.forEach(m=>{
+          let its = ""; (m.items||[]).forEach(it=>{ let cls=it.type=='buy'?'buy':'have'; let ic=it.type=='buy'?'🛒':'✅'; its+=`<span class="mat-chip ${cls}">${ic} ${it.name}</span>`; });
+          let typeClass = "";
+          if (m.type === 'game') { mainType = 'game'; typeClass = "color:#10b981"; }
+          else if (m.type === 'story') { mainType = 'story'; typeClass = "color:#eab308"; }
+          else if (m.type === 'yade_hazrat') { mainType = 'hazrat'; typeClass = "color:#3b82f6"; }
+          let typeName = m.type === 'yade_hazrat' ? 'یاد حضرت' : (m.type === 'game' ? 'بازی' : (m.type === 'story' ? 'داستان' : (m.type === 'trip' ? 'اردو' : 'سایر')));
+          mHtml += `<div style="margin-top:12px; border-right:4px solid var(--primary); padding-right:12px;">
+             <b style="${typeClass}">${typeName}:</b> ${m.name}<br>
+             <div style="display:flex; flex-wrap:wrap; margin-top:5px;">${its}</div>
+          </div>`;
+        });
+
+        h += `<div class="plan-card ${mainType}" id="plan-${p.id}">
+          <div class="plan-header" onclick="this.parentElement.classList.toggle('open')"><div><b>${p.title}</b><br><small style="opacity:0.7;">📅 جلسه: ${toPersianNum(p.date)}</small></div><span>🔽</span></div>
+          <div class="plan-body">${mHtml}<div style="margin-top:20px; display:flex; gap:15px; border-top:1px solid var(--border); padding-top:12px;">
+            <button onclick="askDeletePlan('${p.id}', event)" style="color:#ef4444; background:none; border:none; cursor:pointer; font-weight:bold; font-size:16px; padding:10px;"><i class="fas fa-trash"></i> حذف</button>
+            <button onclick="editPlanClick('${p.id}', event)" style="color:var(--primary); background:none; border:none; cursor:pointer; font-weight:bold; font-size:16px; padding:10px;"><i class="fas fa-edit"></i> ویرایش</button>
+          </div></div>
+        </div>`;
+      });
+    } else {
+        h = "<p style='text-align:center; color:#888; padding:20px;'>هنوز طرح درسی ثبت نشده است.</p>";
+    }
+    document.getElementById('plans-list').innerHTML = h;
+  }
+
+  function renderNotes(){ let h=""; if(DB.notes) DB.notes.forEach(n=> h+=`<div class="note-item"><div class="note-head" onclick="this.parentElement.classList.toggle('open')"><span>📅 ${toPersianNum(n.date)}</span><span>🔽</span></div><div class="note-body">${n.text}</div></div>`); document.getElementById('notes-history').innerHTML=h; }
+  function renderScoreList(){ let h=""; if(DB.students) DB.students.forEach(s=> h+=`<div class="dash-item" onclick="manualScore('${s.name}')"><span>${s.name}</span><span class="score-badge">دستی: ${toPersianNum(s.manualScore)}</span></div>`); document.getElementById('score-list').innerHTML=h; }
+  function renderSettings(){ if(DB.settings){ document.getElementById('st-token').value=DB.settings.BOT_TOKEN||""; document.getElementById('st-admin').value=DB.settings.ADMIN_CHAT_IDS||""; } }
+
+  function renderClassMI(mi) {
+    if(!mi.labels || mi.labels.length === 0) return;
+    document.getElementById('class-mi-section').style.display = 'block';
+    if(classMIChart) classMIChart.destroy();
+    classMIChart = new Chart(document.getElementById('classMIChart'), {
+      type: 'bar',
+      data: { labels: mi.labels, datasets: [{ label: 'میانگین کلاس', data: mi.averages, backgroundColor: '#818cf8' }] },
+      options: { indexAxis: 'y', plugins: { legend: { display: false } } }
+    });
+  }
+
+  function openProfile(n){
+    showLoading(); currentStudent = n;
+    google.script.run.withSuccessHandler(d=>{
+      hideLoading();
+      if(!d.success) return showAlert(d.msg);
+      const i = d.info;
+      document.getElementById('sp-img').src=i.displayImage;
+      document.getElementById('sp-name').innerText = (i.name && i.name !== "undefined") ? i.name : "";
+      document.getElementById('sp-score').innerText=toPersianNum(i.score)+" امتیاز";
+      document.getElementById('sp-input-img').value=i.image;
+      document.getElementById('sp-bio').value=i.bio || "";
+      document.getElementById('sp-parent-note').value=i.parentNote || "";
+
+      const cont = document.getElementById('phones-container'); cont.innerHTML = "";
+      let ps = []; try { ps = JSON.parse(i.phone || "[]"); } catch(e) { if(i.phone) ps.push({label:"تلفن", number:i.phone}); }
+      if(ps.length === 0) addPhoneField(); else ps.forEach(p => addPhoneField(p.label, p.number));
+
+      document.getElementById('sp-dob').value=i.dob || "";
+      document.getElementById('sp-school').value=i.school || "";
+      document.getElementById('sp-medical').value=i.medical || "";
+      renderMIChart(d.mi.chart); renderMIAccordion(d.mi.config, n); renderFullHistory(d.fullHistory); renderGrowthChart(d.stats.growth);
+      nav('single-profile');
+    }).withFailureHandler(e => { hideLoading(); showAlert("خطا در بارگذاری پروفایل: " + e.message); }).getFullStudentProfile(n);
+  }
+
+  function addPhoneField(l="", n="") {
+    const div = document.createElement('div'); div.className="phone-item";
+    div.innerHTML = `<input type="text" placeholder="عنوان" value="${l}" style="flex:1;"><input type="text" placeholder="شماره" value="${n}" style="flex:1.5;"><span style="color:red; cursor:pointer;" onclick="this.parentElement.remove()">✕</span>`;
+    document.getElementById('phones-container').appendChild(div);
+  }
+
+  function chSt(n, e){ let v=e.value; let m=0; if(v=='Late'){ m=prompt("چند دقیقه تاخیر؟","15"); if(!m){ e.value='Present'; v='Present'; } } TEMP[n]={s:v, m:m}; e.style.backgroundColor=v=='Present'?'#dcfce7':(v=='Absent'?'#fee2e2':(v=='Late'?'#fef3c7':'#e0f2fe')); }
+  function markAllPresent(){ DB.students.forEach(s=>TEMP[s.name]={s:'Present',m:0}); renderAtt(); }
+  function submitData(){ if(!DB.students || DB.students.length===0) return showAlert("دانش‌آموزی ثبت نشده است."); showLoading(); const recs=DB.students.map(s=>({name:s.name, status:TEMP[s.name].s, min:TEMP[s.name].m})); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); fetchData(); }).submitAttendance({date:document.getElementById('att-date').value, records:recs}); }
+  function manualScore(n){ let p=prompt(`امتیاز برای ${n}:`,"1"); if(p) google.script.run.withSuccessHandler(fetchData).addManualScore(n,p); }
+  function saveNote(){ const d=document.getElementById('note-date').value; const t=document.getElementById('note-text').value; if(!t)return; showLoading(); google.script.run.withSuccessHandler(r=>{showToast(r.msg); document.getElementById('note-text').value=""; fetchData();}).saveNote(d,t); }
+  function filterNotes(t){ document.querySelectorAll('.note-item').forEach(i=> i.style.display=i.innerText.includes(t)?'block':'none'); }
+  function filterAtt(t){ document.querySelectorAll('#att-list .dash-item').forEach(i=> i.style.display=i.innerText.includes(t)?'flex':'none'); }
+  function saveSettings(){ const d={ BOT_TOKEN: document.getElementById('st-token').value, ADMIN_CHAT_IDS: document.getElementById('st-admin').value }; showLoading(); google.script.run.withSuccessHandler(r=>{hideLoading(); showToast(r.msg); fetchData();}).saveSystemSettings(d); }
+  function addItemToMod(btn, id, ty){ let inp = btn.parentElement.querySelector('input'); let val = inp.value.trim(); if(!val) return; let ic = ty=='buy'?'🛒':'✅'; document.getElementById('tags-'+id).insertAdjacentHTML('beforeend', `<span class="mat-chip ${ty}" data-type="${ty}"><span>${ic} ${val}</span><span style="cursor:pointer; margin-right:6px;" onclick="this.parentElement.remove()">×</span></span>`); inp.value=""; }
+  function delPlan(id){ google.script.run.withSuccessHandler(fetchData).deletePlan(id); }
+  function saveProfile(){
+    let ps = []; document.querySelectorAll('.phone-item').forEach(p => { let inps = p.querySelectorAll('input'); if(inps[1].value) ps.push({label: inps[0].value, number: inps[1].value}); });
+    showLoading(); const d={originalName:currentStudent, image:document.getElementById('sp-input-img').value, bio:document.getElementById('sp-bio').value, parentNote:document.getElementById('sp-parent-note').value, phone:JSON.stringify(ps), dob:document.getElementById('sp-dob').value, school:document.getElementById('sp-school').value, medical:document.getElementById('sp-medical').value}; google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); fetchData(); }).updateStudentProfile(d);
+  }
+  function addStudent(){ let n=document.getElementById('new-name').value; if(n) google.script.run.withSuccessHandler(fetchData).addStudent(n); }
+  function toggleDark(){ document.body.classList.toggle('dark-mode'); toggleSidebar(); }
+  function openPlanModal(){ document.getElementById('p-id').value=""; document.getElementById('modules-container').innerHTML=""; document.getElementById('plan-modal').style.display='flex'; }
+
+  function editPlan(id){
+    const p = DB.plans.find(x => x.id == id);
+    if(!p) return showAlert("خطا: طرح درس پیدا نشد.");
+    document.getElementById('p-id').value=p.id;
+    document.getElementById('p-date').value=p.date;
+    document.getElementById('p-title').value=p.title;
+    document.getElementById('p-sin').value=p.sin||"";
+    document.getElementById('p-prio').value=p.priority;
+    document.getElementById('modules-container').innerHTML="";
+    let ms = []; try { ms = JSON.parse(p.modules||"[]"); } catch(e) { console.error("Plan parse error", e); }
+    ms.forEach(m=> {
+      let type = m.type;
+      if(type === 'بازی') type = 'game';
+      if(type === 'داستان') type = 'story';
+      if(type === 'اردو') type = 'trip';
+      if(type === 'سایر') type = 'other';
+      if(type === 'یاد حضرت') type = 'yade_hazrat';
+      addModule(type, m.name, m.items||[], m.desc);
+    });
+    document.getElementById('plan-modal').style.display='flex';
+    setTimeout(()=>document.querySelectorAll('#plan-modal textarea').forEach(autoGrow), 250);
+  }
+
+  function addModule(type, name="", items=[], desc=""){
+    const c = document.getElementById('modules-container');
+    const d = document.createElement('div'); d.className="mod-box-full"; d.style.border="1px solid var(--border)"; d.style.padding="15px"; d.style.borderRadius="15px"; d.style.margin="10px 0"; d.style.background="var(--bg)";
+    let faMap = {'game':'بازی','story':'داستان','trip':'اردو','other':'سایر', 'yade_hazrat': 'یاد حضرت'};
+    let label = faMap[type] || 'سایر'; let id = Date.now()+Math.random();
+    d.innerHTML = `<div style="display:flex; justify-content:space-between; margin-bottom:10px;"><small style="color:var(--primary); font-weight:bold;">بخش ${label}</small><span style="cursor:pointer; color:#ef4444; font-size:1.2rem;" onclick="this.parentElement.parentElement.remove()">✕</span></div>
+      <input type="hidden" class="m-type" value="${type}">
+      <input class="m-name" placeholder="عنوان این ماژول" value="${name}">
+      <div style="display:flex; gap:8px;"><input class="m-new-mat" placeholder="نام وسیله لازم..." style="margin:0;"><button class="btn btn-green" style="width:45px; padding:0;" onclick="addItemToMod(this,'${id}','have')">✅</button><button class="btn btn-red" style="width:45px; padding:0;" onclick="addItemToMod(this,'${id}','buy')">🛒</button></div>
+      <div class="m-tags-container" id="tags-${id}" style="display:flex; flex-wrap:wrap; margin-top:8px;">${items.map(it=>`<span class="mat-chip ${it.type}" data-type="${it.type}"><span>${it.type=='buy'?'🛒':'✅'} ${it.name}</span><span style="cursor:pointer; margin-right:6px;" onclick="this.parentElement.remove()">×</span></span>`).join('')}</div>
+      <textarea class="m-desc" placeholder="توضیحات و نکات تکمیلی این بخش..." oninput="autoGrow(this)" style="margin-top:10px;">${desc}</textarea>`;
+    c.appendChild(d);
+    setTimeout(()=>autoGrow(d.querySelector('.m-desc')), 100);
+  }
+
+  function savePlan(id, date, title, priority, sin, modules) {
+    const idVal=document.getElementById('p-id').value; const dVal=document.getElementById('p-date').value; const tVal=document.getElementById('p-title').value; const sVal=document.getElementById('p-sin').value; const prVal=document.getElementById('p-prio').value;
+    if(!tVal) return showAlert("عنوان طرح درس اجباری است.");
+    let mods = [];
+    document.querySelectorAll('#modules-container > .mod-box-full').forEach(el=>{
+      let its = []; el.querySelectorAll('.mat-chip').forEach(c=> its.push({name: c.querySelector('span').innerText.substring(2).trim(), type: c.getAttribute('data-type')}));
+      mods.push({type: el.querySelector('.m-type').value, name: el.querySelector('.m-name').value, desc: el.querySelector('.m-desc').value, items: its});
+    });
+    showLoading(); google.script.run.withSuccessHandler(r=>{ showToast(r.msg); document.getElementById('plan-modal').style.display='none'; fetchData(); }).savePlan(idVal,dVal,tVal,prVal,sVal,JSON.stringify(mods));
+  }
+
+  function renderMIChart(d){
+    if(typeof Chart === 'undefined') return;
+    const ctx = document.getElementById('sp-mi-chart');
+    ctx.style.height = '400px';
+    if(miChart) miChart.destroy();
+    miChart = new Chart(ctx, {
+      type:'bar',
+      data:{labels:d.labels, datasets:[{label:'امتیاز هوش', data:d.data, backgroundColor:'#4f46e5', borderRadius: 5}]},
+      options:{
+        indexAxis: 'y',
+        maintainAspectRatio: false,
+        responsive: true,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{beginAtZero:true, grid:{display:false}},
+          y:{ticks:{autoSkip:false, font:{size:11}}}
+        }
+      }
+    });
+  }
+  function renderMIAccordion(conf, name){ let h=""; conf.forEach(c=>{ h += `<div class="card" style="padding:12px; margin-bottom:8px;"><div style="font-weight:bold; cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display=='block'?'none':'block'">${c.type} 🔽</div><div style="display:none; padding-top:12px;"><small style="color:#64748b; display:block; margin-bottom:12px;">${c.desc}</small>${c.pos.split(',').map(b=>`<button class="btn btn-green" style="font-size:0.75rem; padding:8px 12px; margin:3px; width:auto; display:inline-flex;" onclick="logMI('${name}','${c.type}','${b}',1)">+ ${b}</button>`).join('')}${c.neg.split(',').map(b=>`<button class="btn btn-red" style="font-size:0.75rem; padding:8px 12px; margin:3px; width:auto; display:inline-flex;" onclick="logMI('${name}','${c.type}','${b}',-1)">- ${b}</button>`).join('')}</div></div>`; }); document.getElementById('sp-mi-accordion').innerHTML = h; }
+  function logMI(n,t,b,s){ showConfirm("ثبت این مورد در سوابق هوش؟", ()=>{ google.script.run.withSuccessHandler(()=>{showToast("ثبت شد"); openProfile(n);}).submitMILog(n,t,b,s); }); }
+  function renderFullHistory(h){
+    if(!h || h.length === 0) {
+      document.getElementById('sp-mi-history').innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;"><i class="fas fa-history" style="font-size:2rem; display:block; margin-bottom:10px; opacity:0.3;"></i>هنوز فعالیتی ثبت نشده است.</div>`;
+      return;
+    }
+    document.getElementById('sp-mi-history').innerHTML = h.map(x=>{
+      let badge = x.score ? `<b style="color:${x.score>0?'#10b981':'#ef4444'};">${x.score>0?'+':''}${toPersianNum(x.score)}</b>` : "";
+      return `<div style="font-size:0.88rem; border-bottom:1px solid var(--border); padding:12px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span style="font-size:1.2rem;">${x.icon}</span>
+          <div>
+            <small style="opacity:0.6;">${toPersianNum(x.date)} - ${x.title}</small><br>
+            <b style="color:var(--text);">${x.desc}</b>
+          </div>
+        </div>
+        ${badge}
+      </div>`;
+    }).join('');
+  }
+  function renderGrowthChart(g){ if(typeof Chart === 'undefined') return; if(growthChart) growthChart.destroy(); growthChart = new Chart(document.getElementById('sp-growth-chart'), {type:'line', data:{labels:g.labels, datasets:[{label:'روند رشد', data:g.data, borderColor:'#10b981', tension:0.4, fill:true, backgroundColor:'rgba(16,185,129,0.1)'}]}, options:{maintainAspectRatio:false, plugins:{legend:{display:false}}}}); }
+  function openReportCard() {
+    if(!currentStudent) return;
+    showLoading();
+    google.script.run.withSuccessHandler(d=>{
+      hideLoading();
+      if(!d.success) return showAlert("خطا در دریافت اطلاعات");
+      const info = d.info;
+      const stats = d.stats;
+      const today = new Date().toLocaleDateString('fa-IR');
+      document.getElementById('report-date').innerText = `تاریخ صدور: ${toPersianNum(today)}`;
+      let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores.total)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حاضر:</span> <b>${toPersianNum(stats.stats.p)} جلسه</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats.a)} جلسه</b></div><div class="report-stat-row"><span>⏰ تاخیر:</span> <b>${toPersianNum(stats.stats.l)} مورد</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(d.mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
+      document.getElementById('report-content').innerHTML = h;
+      document.getElementById('report-modal').style.display = 'block';
+    }).getFullStudentProfile(currentStudent);
+  }
+  function generateSimpleBarChart(chartData) {
+    if(!chartData || !chartData.labels) return "";
+    let html = '<div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">';
+    let dataMap = chartData.labels.map((l, i) => ({label: l, value: chartData.data[i]}));
+    dataMap.sort((a,b) => b.value - a.value);
+    dataMap.forEach(item => {
+      let pct = Math.min(100, (item.value / 5) * 100);
+      html += `<div style="display:flex; align-items:center; font-size:0.85rem;"><span style="width:100px;">${item.label}</span><div style="flex:1; background:#eee; height:10px; border-radius:5px; overflow:hidden;"><div style="width:${pct}%; background:var(--primary); height:100%;"></div></div><span style="width:30px; text-align:left; margin-right:5px;">${toPersianNum(item.value)}</span></div>`;
+    });
+    html += '</div>';
+    return html;
+  }
+  function openTimer() { document.getElementById('timer-modal').style.display='flex'; }
+  function setTimer(m) { timerSec = m*60; updateTimerDisplay(); }
+  function setCustomTimer() { const m = parseInt(document.getElementById('t-min').value) || 0; const s = parseInt(document.getElementById('t-sec').value) || 0; if(m===0 && s===0) return showAlert("لطفا زمان را وارد کنید"); timerSec = (m*60) + s; updateTimerDisplay(); }
+  function startTimer() { if(timerInterval) clearInterval(timerInterval); timerInterval = setInterval(()=>{ if(timerSec>0) { timerSec--; updateTimerDisplay(); } else { stopTimer(); showAlert("⏰ زمان تمام شد!"); } }, 1000); }
+  function stopTimer() { clearInterval(timerInterval); }
+  function resetTimer() { stopTimer(); timerSec=0; updateTimerDisplay(); }
+  function updateTimerDisplay() { const m = Math.floor(timerSec/60); const s = timerSec%60; document.getElementById('timer-display').innerText = `${toPersianNum(m.toString().padStart(2,'0'))}:${toPersianNum(s.toString().padStart(2,'0'))}`; }
+  function openManualGrouping() { if(!DB.students || DB.students.length===0) return showAlert("هنوز دانش‌آموزی ندارید!"); document.getElementById('g-date').value = new Date().toLocaleDateString('fa-IR'); document.getElementById('g-model').value = ""; document.getElementById('g-current-name').value = ""; tempGroups = []; renderGroupStudentGrid(); renderAddedGroups(); document.getElementById('manual-grouping-modal').style.display='flex'; }
+  function renderGroupStudentGrid() { let h = ""; DB.students.forEach(s => { h += `<div class="student-select-card" onclick="toggleStudentSelection(this, '${s.name}')"><img src="${s.image}"><span>${s.name}</span><i class="fas fa-check-circle"></i></div>`; }); document.getElementById('g-students-list').innerHTML = h; }
+  function toggleStudentSelection(el, name) { el.classList.toggle('selected'); }
+  function addGroupToList() { const gName = document.getElementById('g-current-name').value; let members = []; document.querySelectorAll('.student-select-card.selected').forEach(el => { members.push(el.querySelector('span').innerText); }); if(!gName) return showAlert("لطفا نام گروه را وارد کنید"); if(members.length === 0) return showAlert("حداقل یک نفر را انتخاب کنید"); tempGroups.push({name: gName, members: members}); document.getElementById('g-current-name').value = ""; document.querySelectorAll('.student-select-card.selected').forEach(el => el.classList.remove('selected')); renderAddedGroups(); showToast("گروه اضافه شد"); }
+  function renderAddedGroups() { let h = ""; tempGroups.forEach((g, index) => { h += `<div class="added-group-card"><div><b>${g.name}:</b> <span style="font-size:0.9rem; color:#666;">${g.members.join('، ')}</span></div><span style="color:red; cursor:pointer;" onclick="removeTempGroup(${index})"><i class="fas fa-trash"></i></span></div>`; }); document.getElementById('added-groups-container').innerHTML = h || '<small style="color:#999;">هنوز گروهی اضافه نشده است.</small>'; }
+  function removeTempGroup(index) { tempGroups.splice(index, 1); renderAddedGroups(); }
+  function saveFinalGrouping() { const d = document.getElementById('g-date').value; const model = document.getElementById('g-model').value; if(!model) return showAlert("لطفا عنوان مدل گروه‌بندی را وارد کنید"); if(tempGroups.length === 0) return showAlert("هیچ گروهی ایجاد نشده است!"); const details = JSON.stringify({ isMultiGroup: true, groups: tempGroups }); showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); document.getElementById('manual-grouping-modal').style.display='none'; fetchData(); }).saveManualLog({date: d, type: 'grouping', title: model, details: details}); }
+  function openFreeActivity() { document.getElementById('fa-date').value = new Date().toLocaleDateString('fa-IR'); document.getElementById('free-activity-modal').style.display='flex'; }
+  function saveFreeActivityLog() { const d = document.getElementById('fa-date').value; const t = document.getElementById('fa-title').value; const desc = document.getElementById('fa-desc').value; if(!t) return showAlert("عنوان الزامی است"); showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); document.getElementById('free-activity-modal').style.display='none'; document.getElementById('fa-title').value = ""; document.getElementById('fa-desc').value = ""; fetchData(); }).saveManualLog({date: d, type: 'free_activity', title: t, details: desc}); }
+  let currentArchiveType = 'grouping';
+  function filterArchive(query) { const list = document.getElementById('archive-list'); let h = ""; if(!query || query.trim() === "") { renderArchive(currentArchiveType); return; } const allItems = DB.moduleHistory || []; const filtered = allItems.filter(item => { let searchStr = (item.title + " " + item.date + " " + (item.details || "")).toLowerCase(); if(item.type === 'grouping') searchStr += " گروه بندی"; if(item.type === 'game') searchStr += " بازی"; if(item.type === 'story') searchStr += " داستان"; return searchStr.includes(query.toLowerCase()); }); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">موردی یافت نشد.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
+  function renderArchive(type, tabElement) { if(tabElement) { document.querySelectorAll('#view-archive .tab').forEach(t => t.classList.remove('active')); tabElement.classList.add('active'); } currentArchiveType = type; document.getElementById('archive-search').value = ""; const list = document.getElementById('archive-list'); let h = ""; const filtered = (DB.moduleHistory || []).filter(item => item.type === type); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">هنوز موردی در این دسته ثبت نشده است.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
+  function buildArchiveItemHTML(item) { let headerText = item.title; let bodyContent = ""; let extraBtn = ""; if (item.source === 'plan' && item.planId) { extraBtn = `<br><button class="btn btn-blue" style="font-size:0.8rem; padding:5px 10px; margin-top:10px; width:auto; display:inline-block;" onclick="goToPlan('${item.planId}')">📜 مشاهده طرح درس</button>`; } if (item.type === 'grouping') { let detailsObj = {}; try { detailsObj = JSON.parse(item.details); } catch(e){} if(detailsObj.isMultiGroup) { let groupsHtml = ""; (detailsObj.groups || []).forEach(g => { groupsHtml += `<div style="margin-bottom:8px; border-bottom:1px dashed #eee; padding-bottom:5px;"><span style="font-weight:bold; color:var(--primary);">${g.name}:</span> ${g.members.join('، ')}</div>`; }); bodyContent = groupsHtml; } else { const membersStr = (detailsObj.members || []).join(' - '); const grpName = detailsObj.groupName || ""; if(grpName) headerText += ` <span style="opacity:0.7">(${grpName})</span>`; bodyContent = `<b>اعضا:</b> ${membersStr}`; } } else { const sourceBadge = item.source==='plan' ? '<span style="color:var(--primary);">📚 طرح درس</span>' : '<span style="color:#10b981;">📝 آزاد</span>'; let typeBadge = ""; if(document.getElementById('archive-search').value !== "") { let faType = {'game':'بازی','story':'داستان','trip':'اردو','other':'سایر', 'yade_hazrat': 'یاد حضرت', 'free_activity': 'آزاد', 'grouping': 'گروه‌بندی'}[item.type] || item.type; typeBadge = ` <span style="background:#eee; padding:2px 6px; border-radius:4px; font-size:0.8rem;">${faType}</span>`; } bodyContent = `${item.details || 'بدون توضیحات'}<br><br><small>${sourceBadge}${typeBadge}</small>`; } return `<div class="acc-card"><div class="acc-header" onclick="this.parentElement.classList.toggle('open')"><div>${headerText}</div><div style="font-size:0.8rem; white-space:nowrap;">${toPersianNum(item.date)} 🔽</div></div><div class="acc-body">${bodyContent}${extraBtn}</div></div>`; }
+  function goToPlan(planId) { nav('plans'); setTimeout(() => { const el = document.getElementById('plan-' + planId); if(el) { el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.classList.add('open'); el.classList.add('highlight'); setTimeout(() => el.classList.remove('highlight'), 2000); } else { showAlert("طرح درس مورد نظر یافت نشد."); } }, 600); }
+</script>
+</body>
+</html>
