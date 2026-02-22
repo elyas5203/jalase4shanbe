@@ -194,7 +194,10 @@ function doPost(e) {
         try {
           UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
             method: 'post', contentType: 'application/json',
-            payload: JSON.stringify({ callback_query_id: cb.id, text: "بررسی شد." })
+            payload: JSON.stringify({
+              callback_query_id: cb.id,
+              text: cb.data.startsWith("DONE_") ? "✅ مورد به لیست خریداری شده‌ها اضافه شد." : "درخواست انجام شد."
+            })
           });
         } catch(err) { Logger.log("AnswerCallback Error: " + err); }
       }
@@ -224,7 +227,7 @@ function doPost(e) {
               if (newKeyboard.length > 0) {
                 editMessageReplyMarkup(token, cb.message.chat.id, cb.message.message_id, {inline_keyboard: newKeyboard});
               } else {
-                editMessageText(token, cb.message.chat.id, cb.message.message_id, "🎉 همه موارد خریداری شد.");
+                editMessageText(token, cb.message.chat.id, cb.message.message_id, "<b>✅ خرید تکمیل شد</b>\n────────────────\n🎉 تمامی موارد مورد نیاز برای این طرح درس خریداری و ثبت شدند.\n────────────────");
               }
             }
           } catch (innerE) { Logger.log("Lock Logic Error: " + innerE); } finally { lock.releaseLock(); }
@@ -245,27 +248,39 @@ function setupTelegramWebhook() {
   catch(e) { return "خطا: " + e.message; }
 }
 
-function editMessageText(token, chatId, messageId, text) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageText`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, message_id: messageId, text: text }) }); } catch(e){} }
+function editMessageText(token, chatId, messageId, text) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageText`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, message_id: messageId, text: text, parse_mode: 'HTML' }) }); } catch(e){} }
 function editMessageReplyMarkup(token, chatId, messageId, replyMarkup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: replyMarkup }) }); } catch(e){} }
-function sendTelegramMsgWithBtn(token, chatId, text, markup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, text: text, reply_markup: markup, parse_mode: 'Markdown' }) }); } catch(e){} }
+function sendTelegramMsgWithBtn(token, chatId, text, markup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, text: text, reply_markup: markup, parse_mode: 'HTML' }) }); } catch(e){} }
 
-function notifyAdmins(msg) {
+function notifyAdmins(msg, markup = null) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const settings = getSystemSettings(ss);
   const token = settings.BOT_TOKEN;
   const chats = String(settings.ADMIN_CHAT_IDS || "").split(",").map(id => id.trim()).filter(id => id !== "");
   if(!token || chats.length === 0) return;
 
+  const webAppUrl = ScriptApp.getService().getUrl();
+  let defaultMarkup = null;
+  if (webAppUrl && !markup) {
+    defaultMarkup = {
+      inline_keyboard: [[{ text: "🌐 ورود به سامانه مدیریت", url: webAppUrl }]]
+    };
+  }
+
   chats.forEach(chatId => {
     try {
+      let payload = {
+        chat_id: chatId,
+        text: msg,
+        parse_mode: 'HTML'
+      };
+      if (markup) payload.reply_markup = markup;
+      else if (defaultMarkup) payload.reply_markup = defaultMarkup;
+
       UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'post',
         contentType: 'application/json',
-        payload: JSON.stringify({
-          chat_id: chatId,
-          text: msg,
-          parse_mode: 'Markdown'
-        })
+        payload: JSON.stringify(payload)
       });
     } catch(e) {
       Logger.log("NotifyAdmins Error for " + chatId + ": " + e.message);
@@ -274,8 +289,16 @@ function notifyAdmins(msg) {
 }
 
 function testTelegramConnection() {
-  notifyAdmins("🚀 اتصال سیستم مدیریت کلاس به تلگرام با موفقیت برقرار شد.");
-  return {success: true, msg: "پیام تست ارسال شد. لطفاً تلگرام خود را چک کنید."};
+  let msg = `<b>🚀 تست موفقیت‌آمیز اتصال</b>\n`;
+  msg += `────────────────\n`;
+  msg += `✅ سیستم مدیریت هوشمند کلاس با موفقیت به این بات متصل شد.\n\n`;
+  msg += `🔹 <b>نسخه سیستم:</b> <code>3.5.0</code>\n`;
+  msg += `🔹 <b>وضعیت سرور:</b> <code>Online 🟢</code>\n`;
+  msg += `────────────────\n`;
+  msg += `✨ <i>آماده دریافت گزارش‌های کلاسی.</i>`;
+
+  notifyAdmins(msg);
+  return {success: true, msg: "✅ پیام تست ارسال شد. لطفاً تلگرام خود را چک کنید."};
 }
 
 // ==========================================
@@ -310,12 +333,19 @@ function checkDailyReminders() {
         let itemsMsg = "", keyboard = [], currentRow = [];
         let list = shoppingList[pid];
         for(let j=0; j<list.length; j++) {
-            itemsMsg += `\n${j+1}. ${list[j].name}`;
+            itemsMsg += `\n${j+1}. ${escapeHtml(list[j].name)}`;
             currentRow.push({text: `✅ ${j+1}`, callback_data: `DONE_${list[j].id}`});
             if(currentRow.length === 4) { keyboard.push(currentRow); currentRow = []; }
         }
         if(currentRow.length > 0) keyboard.push(currentRow);
-        let msg = `${isToday ? "🚨 *فوری*" : "🛒 *خرید*"} (${pDate})\n\n📌 *${planTitle}*${itemsMsg}`;
+        let msg = `<b>${isToday ? "🚨 یادآوری فوری" : "🛒 لیست خرید"}</b>\n`;
+        msg += `────────────────\n`;
+        msg += `🗓 <b>تاریخ اجرا:</b> <code>${escapeHtml(pDate)}</code>\n`;
+        msg += `📌 <b>طرح درس:</b> ${escapeHtml(planTitle)}\n`;
+        msg += `────────────────\n`;
+        msg += `🛍 <b>موارد مورد نیاز:</b>\n${itemsMsg}\n\n`;
+        msg += `<i>برای تایید خرید، روی شماره مربوطه کلیک کنید:</i>`;
+
         chats.forEach(id => sendTelegramMsgWithBtn(token, id, msg, {inline_keyboard: keyboard}));
       }
     }
@@ -360,17 +390,24 @@ function saveManualLog(data) {
   if (sh) sh.appendRow([data.date, data.type, data.title, data.details]);
 
   let typeName = data.type === 'grouping' ? '👥 گروه‌بندی' : '📝 فعالیت آزاد';
-  let detailsText = data.details;
+  let detailsText = escapeHtml(data.details);
   if (data.type === 'grouping') {
     try {
       let d = JSON.parse(data.details);
       if (d.isMultiGroup) {
-        detailsText = d.groups.map(g => `${g.name}: ${g.members.join('، ')}`).join('\n');
+        detailsText = d.groups.map(g => `<b>${escapeHtml(g.name)}:</b> ${escapeHtml(g.members.join('، '))}`).join('\n');
       }
     } catch (e) { }
   }
 
-  notifyAdmins(`${typeName}\n\n📌 عنوان: ${data.title}\n📅 تاریخ: ${data.date}\n\n🔍 جزئیات:\n${detailsText}`);
+  let msg = `<b>${typeName}</b>\n`;
+  msg += `────────────────\n`;
+  msg += `📌 <b>عنوان:</b> ${escapeHtml(data.title)}\n`;
+  msg += `🗓 <b>تاریخ:</b> <code>${escapeHtml(data.date)}</code>\n`;
+  msg += `────────────────\n`;
+  msg += `🔍 <b>جزئیات:</b>\n${detailsText}`;
+
+  notifyAdmins(msg);
 
   return { success: true, msg: "✅ ثبت شد." };
 }
@@ -506,6 +543,16 @@ function toEnglishDigits(str) {
 
 function getTodayStr() { return normalizeDateStr(new Date().toLocaleDateString('fa-IR')); }
 
+function escapeHtml(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function fixUrl(u) {
   if(!u) return CONFIG.DEFAULT_IMG;
   if(u.includes("/d/")) return "https://lh3.googleusercontent.com/d/" + u.split("/d/")[1].split("/")[0] + "=s400";
@@ -607,8 +654,19 @@ function savePlan(id, date, title, priority, sin, modules) {
         });
     } catch(e) {}
 
-    let buyMsg = `📚 *طرح درس جدید ثبت شد*\n\n📌 عنوان: ${title}\n📅 تاریخ اجرا: ${date}`;
-    if(buyList.length > 0) buyMsg += `\n\n🛒 *لیست خرید لوازم:* \n- ${buyList.join('\n- ')}`;
+    let buyMsg = `<b>📚 طرح درس جدید ثبت شد</b>\n`;
+    buyMsg += `────────────────\n`;
+    buyMsg += `📌 <b>عنوان:</b> ${escapeHtml(title)}\n`;
+    buyMsg += `🗓 <b>تاریخ اجرا:</b> <code>${escapeHtml(date)}</code>\n`;
+    buyMsg += `────────────────\n`;
+
+    if(buyList.length > 0) {
+        buyMsg += `🛒 <b>لیست خرید لوازم:</b>\n`;
+        buyList.forEach((item, idx) => {
+            buyMsg += `${idx + 1}. ${escapeHtml(item)}\n`;
+        });
+        buyMsg += `────────────────`;
+    }
 
     notifyAdmins(buyMsg);
 
@@ -670,11 +728,14 @@ function submitAttendance(data) {
     });
 
     // Telegram Notification
-    let summary = `📊 *گزارش حضور و غیاب* (${today})\n`;
-    if(p.length) summary += `\n✅ حاضرین: ${p.join('، ')}`;
-    if(a.length) summary += `\n❌ غایبین: ${a.join('، ')}`;
-    if(l.length) summary += `\n⏰ تاخیر: ${l.join('، ')}`;
-    if(e.length) summary += `\n🏳️ موجه: ${e.join('، ')}`;
+    let summary = `<b>📊 گزارش حضور و غیاب</b>\n`;
+    summary += `🗓 تاریخ: <code>${escapeHtml(today)}</code>\n`;
+    summary += `────────────────\n`;
+    if(p.length) summary += `✅ <b>حاضرین:</b>\n<pre>${escapeHtml(p.join('، '))}</pre>\n\n`;
+    if(a.length) summary += `❌ <b>غایبین:</b>\n<pre>${escapeHtml(a.join('، '))}</pre>\n\n`;
+    if(l.length) summary += `⏰ <b>تاخیر:</b>\n<pre>${escapeHtml(l.join('، '))}</pre>\n\n`;
+    if(e.length) summary += `🏳️ <b>موجه:</b>\n<pre>${escapeHtml(e.join('، '))}</pre>\n`;
+    summary += `────────────────`;
 
     notifyAdmins(summary);
 
@@ -683,7 +744,13 @@ function submitAttendance(data) {
 }
 function saveNote(d, t) {
   SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.NOTES).appendRow([d, t]);
-  notifyAdmins(`📒 *یادداشت جدید جلسه*\n\n📅 تاریخ: ${d}\n\n📝 متن:\n${t}`);
+  let msg = `<b>📒 یادداشت جدید جلسه</b>\n`;
+  msg += `────────────────\n`;
+  msg += `🗓 <b>تاریخ:</b> <code>${escapeHtml(d)}</code>\n`;
+  msg += `────────────────\n`;
+  msg += `📝 <b>متن یادداشت:</b>\n<i>${escapeHtml(t)}</i>`;
+
+  notifyAdmins(msg);
   return { success: true, msg: "یادداشت ذخیره شد" };
 }
 function addStudent(n){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE).appendRow([n,0,0,0,"ثبت نام","",0]);return{success:true};}
@@ -696,7 +763,15 @@ function addManualScore(n, p) {
     if (d[i][0] == n) {
       sh.getRange(i + 1, 7).setValue((Number(d[i][6]) || 0) + Number(p));
       updateCalculations(ss);
-      notifyAdmins(`⭐ *ثبت امتیاز دستی*\n\n👤 متربی: ${n}\n📈 مقدار: ${p > 0 ? '+' : ''}${p}\n🏆 مجموع امتیازات: ${(Number(d[i][3]) || 0) + Number(p)}`);
+
+      let msg = `<b>⭐ ثبت امتیاز دستی</b>\n`;
+      msg += `────────────────\n`;
+      msg += `👤 <b>متربی:</b> <code>${escapeHtml(n)}</code>\n`;
+      msg += `📈 <b>تغییر امتیاز:</b> <code>${p > 0 ? '+' : ''}${p}</code>\n`;
+      msg += `🏆 <b>مجموع امتیازات:</b> <code>${(Number(d[i][3]) || 0) + Number(p)}</code>\n`;
+      msg += `────────────────`;
+
+      notifyAdmins(msg);
       return { success: true, msg: "✅ امتیاز ثبت شد" };
     }
   }
@@ -706,7 +781,14 @@ function submitMILog(sn, it, bh, sc) {
   SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.MI_LOGS).appendRow([new Date(), sn, it, bh, sc]);
 
   let statusText = sc === 1 ? "✅ مثبت" : (sc === -1 ? "❌ منفی" : "⚪ خنثی");
-  let msg = `🧠 *ثبت هوش چندگانه*\n\n👤 متربی: ${sn}\n📌 نوع: ${it}\n🔍 رفتار: ${bh}\n📈 وضعیت: ${statusText}`;
+  let msg = `<b>🧠 ثبت هوش چندگانه</b>\n`;
+  msg += `────────────────\n`;
+  msg += `👤 <b>متربی:</b> <code>${escapeHtml(sn)}</code>\n`;
+  msg += `📌 <b>نوع هوش:</b> ${escapeHtml(it)}\n`;
+  msg += `📈 <b>وضعیت:</b> ${statusText}\n`;
+  msg += `────────────────\n`;
+  msg += `🔍 <b>رفتار مشاهده شده:</b>\n<i>${escapeHtml(bh)}</i>`;
+
   notifyAdmins(msg);
 
   return { success: true, msg: "✅ ثبت شد" };
