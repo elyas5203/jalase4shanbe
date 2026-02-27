@@ -270,7 +270,7 @@ function editMessageReplyMarkup(token, chatId, messageId, replyMarkup) { try { U
 function sendTelegramMsgWithBtn(token, chatId, text, markup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, text: text, reply_markup: markup, parse_mode: 'HTML', disable_web_page_preview: true }) }); } catch(e){} }
 function sendSimpleMsg(token, chatId, text) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' }) }); } catch(e){} }
 
-function notifyAdmins(msg, markup = null) {
+function notifyAdmins(msg, markup = null, photoUrl = null) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const settings = getSystemSettings(ss);
   const token = settings.BOT_TOKEN;
@@ -280,37 +280,37 @@ function notifyAdmins(msg, markup = null) {
   const webAppUrl = ScriptApp.getService().getUrl();
   let finalMarkup = markup;
 
-  // If no markup provided, add the "Open Dashboard" button by default
   if (!finalMarkup && webAppUrl) {
-    finalMarkup = {
-      inline_keyboard: [[{ text: "🌐 ورود به سامانه مدیریت", url: webAppUrl }]]
-    };
+    finalMarkup = { inline_keyboard: [[{ text: "🌐 ورود به سامانه مدیریت", url: webAppUrl }]] };
   } else if (finalMarkup && webAppUrl) {
-    // If markup exists, append the Dashboard button at the end if it's not already there
     let hasDash = false;
     finalMarkup.inline_keyboard.forEach(row => row.forEach(btn => { if(btn.url === webAppUrl) hasDash = true; }));
-    if (!hasDash) {
-      finalMarkup.inline_keyboard.push([{ text: "🌐 ورود به سامانه مدیریت", url: webAppUrl }]);
-    }
+    if (!hasDash) finalMarkup.inline_keyboard.push([{ text: "🌐 ورود به سامانه مدیریت", url: webAppUrl }]);
   }
 
   chats.forEach(chatId => {
     try {
+      let method = photoUrl ? "sendPhoto" : "sendMessage";
       let payload = {
         chat_id: chatId,
-        text: msg,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true
+        parse_mode: 'HTML'
       };
+      if (photoUrl) {
+        payload.photo = photoUrl;
+        payload.caption = msg;
+      } else {
+        payload.text = msg;
+        payload.disable_web_page_preview = true;
+      }
       if (finalMarkup) payload.reply_markup = finalMarkup;
 
-      UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/${method}`, {
         method: 'post',
         contentType: 'application/json',
         payload: JSON.stringify(payload)
       });
     } catch(e) {
-      Logger.log("NotifyAdmins Error for " + chatId + ": " + e.message);
+      Logger.log("NotifyAdmins Error (" + chatId + "): " + e.message);
     }
   });
 }
@@ -318,7 +318,7 @@ function notifyAdmins(msg, markup = null) {
 /**
  * ایجاد یک پیام زیبا و ساختاریافته برای تلگرام
  */
-function sendBeautifulNotification(title, icon, sections, markup = null) {
+function sendBeautifulNotification(title, icon, sections, markup = null, photoUrl = null) {
   let msg = `<b>${icon} ${title}</b>\n`;
   msg += `<b>────────────────</b>\n`;
 
@@ -336,7 +336,7 @@ function sendBeautifulNotification(title, icon, sections, markup = null) {
 
   msg += `<b>────────────────</b>`;
 
-  notifyAdmins(msg, markup);
+  notifyAdmins(msg, markup, photoUrl);
 }
 
 function testTelegramConnection() {
@@ -601,6 +601,34 @@ function toEnglishDigits(str) {
 
 function getTodayStr() { return normalizeDateStr(new Date().toLocaleDateString('fa-IR')); }
 
+function generateAttendanceChartUrl(trendData) {
+  if (!trendData || !trendData.labels || trendData.labels.length === 0) return null;
+
+  const chartConfig = {
+    type: 'line',
+    data: {
+      labels: trendData.labels,
+      datasets: [{
+        label: 'حضور %',
+        data: trendData.data,
+        borderColor: '#4f46e5',
+        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+        fill: true,
+        pointRadius: 4,
+        lineTension: 0.4
+      }]
+    },
+    options: {
+      title: { display: true, text: 'روند حضور و غیاب کلاس' },
+      scales: {
+        yAxes: [{ ticks: { beginAtZero: true, max: 100 } }]
+      }
+    }
+  };
+
+  return "https://quickchart.io/chart?c=" + encodeURIComponent(JSON.stringify(chartConfig)) + "&w=500&h=300&bkg=white";
+}
+
 function escapeHtml(text) {
   if (!text) return "";
   return String(text)
@@ -718,6 +746,22 @@ function savePlan(id, date, title, sin, modules) {
       { label: "تاریخ اجرا", value: escapeHtml(date) }
     ];
 
+    if (sin && sin.trim() !== "") {
+      sections.push({ title: "⏰ سین برنامه (زمان‌بندی)", pre: escapeHtml(sin) });
+    }
+
+    try {
+      const mods = JSON.parse(modules);
+      if (mods && mods.length > 0) {
+        let modText = mods.map((m, i) => {
+          let t = `<b>${i+1}. ${escapeHtml(m.name)}</b>`;
+          if (m.desc) t += `\n<i>${escapeHtml(m.desc)}</i>`;
+          return t;
+        }).join('\n\n');
+        sections.push({ raw: `<b>🧩 ماژول‌های برنامه:</b>\n${modText}` });
+      }
+    } catch(e) {}
+
     if(buyList.length > 0) {
         let listText = buyList.map((item, idx) => `${idx + 1}. ${escapeHtml(item)}`).join('\n');
         sections.push({ title: "🛒 لیست خرید لوازم", pre: listText });
@@ -782,9 +826,17 @@ function submitAttendance(data) {
         shA.getRange(r, colIndex).setValue(statusText);
     });
 
+    // Update before calculating chart
+    updateCalculations(ss);
+
     // Telegram Notification
+    const trendData = getTrendData(ss);
+    const photoUrl = generateAttendanceChartUrl(trendData);
+    const currentRate = trendData.data.length > 0 ? trendData.data[trendData.data.length - 1] : 0;
+
     let sections = [
-      { label: "تاریخ", value: escapeHtml(today) }
+      { label: "تاریخ", value: escapeHtml(today) },
+      { label: "درصد حضور این جلسه", value: currentRate + "%" }
     ];
 
     if(p.length) sections.push({ title: "✅ حضور به‌موقع", pre: escapeHtml(p.join('، ')) });
@@ -792,9 +844,7 @@ function submitAttendance(data) {
     if(a.length) sections.push({ title: "❌ غایبین", pre: escapeHtml(a.join('، ')) });
     if(e.length) sections.push({ title: "🏳️ غایبین موجه", pre: escapeHtml(e.join('، ')) });
 
-    sendBeautifulNotification("گزارش حضور و غیاب", "📊", sections);
-
-    updateCalculations(ss);
+    sendBeautifulNotification("گزارش حضور و غیاب", "📊", sections, null, photoUrl);
     return {success: true, msg: "✅ حضور و غیاب ثبت شد."};
 }
 function saveNote(d, t) {
