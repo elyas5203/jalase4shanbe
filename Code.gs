@@ -345,26 +345,13 @@ function doPost(e) {
 
     // Handle Message Commands
     if (update.message && update.message.text) {
-      let txt = update.message.text;
-      let chatId = update.message.chat.id;
+      const txt = update.message.text;
+      const chatId = update.message.chat.id;
 
-      if (txt === "/start" || txt === "/status") {
-        const keyboard = {
-          keyboard: [
-            [{ text: "📊 آمار کلاس" }, { text: "🏆 نفرات برتر" }],
-            [{ text: "📋 لیست متربیان" }, { text: "🔗 دریافت لینک ورود" }]
-          ],
-          resize_keyboard: true,
-          persistent: true
-        };
-        sendTelegramMsgWithBtn(token, chatId, "<b>🚀 سامانه مدیریت هوشمند کلاس</b>\n<b>────────────────</b>\n✅ وضعیت: <code>فعال و متصل</code>\n⏱ زمان: <code>" + new Date().toLocaleString('fa-IR') + "</code>\n<b>────────────────</b>\n✨ از منوی زیر برای دریافت گزارش‌ها استفاده کنید.", keyboard);
-        return output;
-      }
-
-      const appData = getComprehensiveAppData();
-      const students = Object.values(appData.students || {});
-
+      // 1. Check for custom button commands FIRST for high responsiveness
       if (txt === "📊 آمار کلاس") {
+        const appData = getComprehensiveAppData();
+        const students = Object.values(appData.students || {});
         const total = students.length;
         const trend = appData.trend || { data: [] };
         const avgAtt = trend.data.length > 0 ? trend.data[trend.data.length - 1] : 0;
@@ -376,8 +363,12 @@ function doPost(e) {
         msg += `🥇 متربی برتر فعلی: <code>${top}</code>\n`;
         msg += "<b>────────────────</b>";
         sendSimpleMsg(token, chatId, msg);
+        return output;
       }
-      else if (txt === "🏆 نفرات برتر") {
+
+      if (txt === "🏆 نفرات برتر") {
+        const appData = getComprehensiveAppData();
+        const students = Object.values(appData.students || {});
         const sorted = students.sort((a, b) => (b.info?.score || 0) - (a.info?.score || 0)).slice(0, 10);
         let msg = "<b>🏆 لیست نفرات برتر</b>\n<b>────────────────</b>\n";
         sorted.forEach((s, i) => {
@@ -385,8 +376,12 @@ function doPost(e) {
         });
         msg += "<b>────────────────</b>";
         sendSimpleMsg(token, chatId, msg);
+        return output;
       }
-      else if (txt === "📋 لیست متربیان") {
+
+      if (txt === "📋 لیست متربیان") {
+        const appData = getComprehensiveAppData();
+        const students = Object.values(appData.students || {});
         const names = students.map(s => s.info.name).sort();
         let msg = "<b>📋 لیست اسامی متربیان</b>\n<b>────────────────</b>\n";
         names.forEach((n, i) => {
@@ -394,14 +389,29 @@ function doPost(e) {
         });
         msg += "<b>────────────────</b>";
         sendSimpleMsg(token, chatId, msg);
+        return output;
       }
-      else if (txt === "🔗 دریافت لینک ورود") {
+
+      if (txt === "🔗 دریافت لینک ورود") {
         const url = ScriptApp.getService().getUrl();
         let msg = "<b>🔗 لینک ورود به سامانه</b>\n<b>────────────────</b>\n";
         msg += `🌐 برای مدیریت کلاس روی لینک زیر کلیک کنید:\n\n${url}\n`;
         msg += "<b>────────────────</b>";
         sendSimpleMsg(token, chatId, msg);
+        return output;
       }
+
+      // 2. Default handler for /start or unrecognized text
+      const keyboard = {
+        keyboard: [
+          [{ text: "📊 آمار کلاس" }, { text: "🏆 نفرات برتر" }],
+          [{ text: "📋 لیست متربیان" }, { text: "🔗 دریافت لینک ورود" }]
+        ],
+        resize_keyboard: true,
+        persistent: true
+      };
+      sendTelegramMsgWithBtn(token, chatId, "<b>🚀 سامانه مدیریت هوشمند کلاس</b>\n<b>────────────────</b>\n✅ وضعیت: <code>فعال و متصل</code>\n⏱ زمان: <code>" + new Date().toLocaleString('fa-IR') + "</code>\n<b>────────────────</b>\n✨ از منوی زیر برای دریافت گزارش‌ها استفاده کنید.", keyboard);
+      return output;
     }
 
     // Handle Callback Queries (Buttons)
@@ -479,7 +489,8 @@ function notifyAdmins(msg, markup = null, photoUrl = null) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const settings = getSystemSettings(ss);
   const token = settings.BOT_TOKEN;
-  const chats = String(settings.ADMIN_CHAT_IDS || "").split(",").map(id => id.trim()).filter(id => id !== "");
+  // Sanitize input: replace Persian commas with English, remove spaces, then split
+  const chats = String(settings.ADMIN_CHAT_IDS || "").replace(/،/g, ',').replace(/\s/g, '').split(",").filter(id => id !== "");
   if(!token || chats.length === 0) return;
 
   const webAppUrl = ScriptApp.getService().getUrl();
@@ -579,7 +590,7 @@ function checkDailyReminders() {
   }
   const settings = getSystemSettings(ss);
   const token = settings.BOT_TOKEN;
-  const chats = String(settings.ADMIN_CHAT_IDS || "").split(",").map(id => id.trim()).filter(id => id !== "");
+  const chats = String(settings.ADMIN_CHAT_IDS || "").replace(/،/g, ',').replace(/\s/g, '').split(",").filter(id => id !== "");
   if(!token || chats.length === 0) return;
   plansData.forEach((p, index) => {
     if(index === 0) return;
@@ -787,7 +798,12 @@ function saveSystemSettings(f) {
   const sh = ss.getSheetByName(CONFIG.SHEETS.SETTINGS);
   const d = sh.getDataRange().getValues();
   for(let i=1; i<d.length; i++) {
-    if(f[d[i][0]] !== undefined) sh.getRange(i+1, 2).setValue(f[d[i][0]]);
+    const key = d[i][0];
+    if(f[key] !== undefined) {
+      // Force strings for IDs and tokens to prevent Sheets from formatting them as large numbers
+      const val = (key === "ADMIN_CHAT_IDS" || key === "BOT_TOKEN") ? "'" + f[key] : f[key];
+      sh.getRange(i+1, 2).setValue(val);
+    }
   }
   syncSheetToFirebase();
   return {success: true, msg: "✅ تنظیمات ذخیره شد."};
@@ -1191,7 +1207,8 @@ function getTrendData(ss) {
   let labels = [], trend = [], details = [];
   if(data.length > 0) {
     const headers = data[0];
-    for(let c=Math.max(1, headers.length-10); c<headers.length; c++){
+    // Increase history from 10 to last 30 sessions for better trend analysis
+    for(let c=Math.max(1, headers.length-30); c<headers.length; c++){
       labels.push(headers[c] instanceof Date ? headers[c].toLocaleDateString('fa-IR') : String(headers[c]));
       let p=0, a=0, l=0, e=0, t=0;
       for(let r=1; r<data.length; r++) {
@@ -1204,7 +1221,9 @@ function getTrendData(ss) {
           else if(val.includes("موجه")) e++;
         }
       }
-      trend.push(t>0 ? Math.round((p/t)*100) : 0);
+      // Presence Rate calculation: (Present + Late) / Total
+      // This fix ensures "Late" kids are counted as present in the percentage
+      trend.push(t>0 ? Math.round(((p+l)/t)*100) : 0);
       details.push({p, a, l, e, total: t});
     }
   }
