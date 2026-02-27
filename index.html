@@ -593,13 +593,13 @@
 <script>
   // --- Firebase Configuration ---
   const FIREBASE_CONFIG = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "dummy-key",
+    authDomain: "sitejalasecharshanbe-c5a64.firebaseapp.com",
+    databaseURL: "https://sitejalasecharshanbe-c5a64-default-rtdb.firebaseio.com/",
+    projectId: "sitejalasecharshanbe-c5a64",
+    storageBucket: "sitejalasecharshanbe-c5a64.appspot.com",
+    messagingSenderId: "000000000000",
+    appId: "1:000000000000:web:0000000000000000000000"
   };
 
   // Initialize Firebase
@@ -1144,15 +1144,21 @@
   }
 
   function logMI(n,t,b,s){
-    // Optimistic Local Update
-    if (DB.students && DB.students[n] && DB.students[n].mi) {
-      if (!DB.students[n].mi.traitStates) DB.students[n].mi.traitStates = {};
-      DB.students[n].mi.traitStates[t + "_" + b] = s;
-      renderStudentProfileData(n);
-    }
+    // Aggressive Optimistic Local Update
+    if (!DB.students) DB.students = {};
+    if (!DB.students[n]) DB.students[n] = { info: { name: n }, mi: { traitStates: {} }, stats: {} };
+    if (!DB.students[n].mi) DB.students[n].mi = { traitStates: {} };
+    if (!DB.students[n].mi.traitStates) DB.students[n].mi.traitStates = {};
+
+    DB.students[n].mi.traitStates[t + "_" + b] = s;
+
+    // UI Refresh (Instant)
+    renderStudentProfileData(n);
 
     // Firebase Update
     fbDB.ref(`classDB/students/${n}/mi/traitStates`).update({ [t + "_" + b]: s });
+
+    // Background Backup
     google.script.run.withSuccessHandler(()=>{ showToast("بروزرسانی شد"); }).submitMILog(n,t,b,s);
   }
 

@@ -1,7 +1,7 @@
 // --- تنظیمات و ساختار دیتابیس ---
 const FB_CONFIG = {
-  URL: "[YOUR_FIREBASE_URL]", // e.g. https://your-db-name.firebaseio.com/
-  SECRET: "[YOUR_FIREBASE_SECRET]"
+  URL: "https://sitejalasecharshanbe-c5a64-default-rtdb.firebaseio.com",
+  SECRET: "7L2yuiSMah90NRXlCqY2CIajTeheyzP7vQWTTolh"
 };
 
 const CONFIG = {
