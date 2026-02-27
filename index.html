@@ -7,6 +7,9 @@
   <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Firebase v9 Compat CDN -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
   <style>
     :root { --primary: #4f46e5; --bg: #f8fafc; --card-bg: #ffffff; --text: #1e293b; --border: #e2e8f0; --success: #10b981; --danger: #ef4444; }
@@ -562,6 +565,21 @@
   <div class="fab" id="fab" onclick="submitData()">✓</div>
 
 <script>
+  // --- Firebase Configuration ---
+  const FIREBASE_CONFIG = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  // Initialize Firebase
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const fbDB = firebase.database();
+
   let DB={}, TEMP={}, chartInst=null, miChart=null, growthChart=null, classMIChart=null, currentStudent=null;
   let timerInterval=null, timerSec=0;
   let confirmCallback = null;
@@ -695,33 +713,55 @@
       const t=new Date().toLocaleDateString('fa-IR');
       document.querySelectorAll('.to-persian').forEach(i=>i.value=t);
       if(document.getElementById('header-date')) document.getElementById('header-date').innerText = t;
-      fetchData();
+      initRealtimeListeners();
     } catch(e) { console.error(e); }
   });
 
-  function fetchData(){
+  function initRealtimeListeners() {
     showLoading();
-    google.script.run.withSuccessHandler(d=>{
-      DB=d;
-      hideLoading();
-      try { renderDash(); } catch(e) { console.error(e); }
-      try { renderProfiles(); } catch(e) { console.error(e); }
-      try { renderAtt(); } catch(e) { console.error(e); }
-      try { renderPlans(); } catch(e) { console.error(e); }
-      try { renderNotes(); } catch(e) { console.error(e); }
-      try { renderSettings(); } catch(e) { console.error(e); }
-      try { renderScoreList(); } catch(e) { console.error(e); }
-      try { renderArchive('grouping'); } catch(e) { console.error(e); }
-      google.script.run.withSuccessHandler(mi=>{ renderClassMI(mi); }).getClassMIData();
-    }).withFailureHandler(e => {
+
+    // ۱. لیسنر اصلی دیتابیس
+    fbDB.ref('classDB').on('value', snapshot => {
+      const data = snapshot.val();
+      if (data) {
+        DB = data;
         hideLoading();
-        showAlert("خطا در دریافت اطلاعات. لطفا اینترنت خود را چک کنید.\n" + e.message, 'error');
-    }).getAppData();
+        refreshAllViews();
+        // اگر پروفایل باز بود، آپدیتش کن
+        if (currentStudent && document.getElementById('view-single-profile').classList.contains('active')) {
+          renderStudentProfileData(currentStudent);
+        }
+      } else {
+        // اگر فایربیس خالی بود، یکبار از شیت بخون و پرش کن
+        google.script.run.withSuccessHandler(() => hideLoading()).syncSheetToFirebase();
+      }
+    });
+
+    // ۲. لیسنر درفت حضور و غیاب (همزمان)
+    fbDB.ref('live_attendance_draft').on('value', snapshot => {
+      const draft = snapshot.val();
+      if (draft) {
+        TEMP = draft;
+        if (document.getElementById('view-att').classList.contains('active')) renderAtt();
+      }
+    });
+  }
+
+  function refreshAllViews() {
+    try { renderDash(); } catch(e) {}
+    try { renderProfiles(); } catch(e) {}
+    try { renderAtt(); } catch(e) {}
+    try { renderPlans(); } catch(e) {}
+    try { renderNotes(); } catch(e) {}
+    try { renderSettings(); } catch(e) {}
+    try { renderScoreList(); } catch(e) {}
+    try { renderArchive(currentArchiveType || 'grouping'); } catch(e) {}
+    try { renderClassMI(DB.classMI || {labels:[], averages:[]}); } catch(e) {}
   }
 
   function renderDash(){
     if(!DB.students) return;
-    document.getElementById('top-student').innerText = DB.topStudent;
+    document.getElementById('top-student').innerText = DB.topStudent || "---";
     if(typeof Chart !== 'undefined') {
         if(chartInst) chartInst.destroy();
         chartInst = new Chart(document.getElementById('mainChart'), {
@@ -747,10 +787,11 @@
         });
     }
     let h = "";
-    DB.students.forEach(s=>{
-      h += `<div class="dash-item" onclick="openProfile('${s.name}')">
-        <div style="display:flex; align-items:center; gap:12px;"><img src="${s.image}" class="avatar-sm"><b>${s.name} ${s.fire?'🔥':''}</b></div>
-        <span class="score-badge">${toPersianNum(s.score)}</span>
+    const studentList = Object.values(DB.students || {}).sort((a,b) => b.info.score - a.info.score);
+    studentList.forEach(s => {
+      h += `<div class="dash-item" onclick="openProfile('${s.info.name}')">
+        <div style="display:flex; align-items:center; gap:12px;"><img src="${s.info.displayImage}" class="avatar-sm"><b>${s.info.name} ${s.info.fire?'🔥':''}</b></div>
+        <span class="score-badge">${toPersianNum(s.info.score)}</span>
       </div>`;
     });
     document.getElementById('dash-list').innerHTML = h;
@@ -758,8 +799,9 @@
 
   function renderProfiles(){
     let h="";
-    if (DB.students && DB.students.length > 0) {
-      DB.students.forEach(s=> h+=`<div class="dash-item" onclick="openProfile('${s.name}')"><span>${s.name}</span><span style="opacity:0.4;">➔</span></div>`);
+    const names = Object.keys(DB.students || {}).sort();
+    if (names.length > 0) {
+      names.forEach(name => h += `<div class="dash-item" onclick="openProfile('${name}')"><span>${name}</span><span style="opacity:0.4;">➔</span></div>`);
     } else {
       h = "<p style='text-align:center;color:#888;'>هنوز متربی ثبت نشده است.</p>";
     }
@@ -768,22 +810,22 @@
 
   function renderAtt(){
     let h = "";
-    if (DB.students) {
-      DB.students.forEach(s=>{
-        if(!TEMP[s.name]) TEMP[s.name]={s:'Present', m:0};
-        let st = TEMP[s.name].s;
-        let bg = st=='Present'?'#dcfce7':(st=='Absent'?'#fee2e2':(st=='Late'?'#fef3c7':'#e0f2fe'));
-        h += `<div class="dash-item" style="cursor:default;">
-          <div style="display:flex; align-items:center; gap:12px;"><img src="${s.image}" class="avatar-sm"><b>${s.name}</b></div>
-          <select style="width:110px; background:${bg}; margin:0; font-weight:bold; border-radius:10px;" onchange="chSt('${s.name}', this)">
-            <option value="Present" ${st=='Present'?'selected':''}>حاضر</option>
-            <option value="Absent" ${st=='Absent'?'selected':''}>غیبت</option>
-            <option value="Late" ${st=='Late'?'selected':''}>تاخیر</option>
-            <option value="Excused" ${st=='Excused'?'selected':''}>موجه</option>
-          </select>
-        </div>`;
-      });
-    }
+    const names = Object.keys(DB.students || {}).sort();
+    names.forEach(name => {
+      const s = DB.students[name];
+      if(!TEMP[name]) TEMP[name]={s:'Present', m:0};
+      let st = TEMP[name].s;
+      let bg = st=='Present'?'#dcfce7':(st=='Absent'?'#fee2e2':(st=='Late'?'#fef3c7':'#e0f2fe'));
+      h += `<div class="dash-item" style="cursor:default;">
+        <div style="display:flex; align-items:center; gap:12px;"><img src="${s.info.displayImage}" class="avatar-sm"><b>${name}</b></div>
+        <select style="width:110px; background:${bg}; margin:0; font-weight:bold; border-radius:10px;" onchange="chSt('${name}', this)">
+          <option value="Present" ${st=='Present'?'selected':''}>حاضر</option>
+          <option value="Absent" ${st=='Absent'?'selected':''}>غیبت</option>
+          <option value="Late" ${st=='Late'?'selected':''}>تاخیر</option>
+          <option value="Excused" ${st=='Excused'?'selected':''}>موجه</option>
+        </select>
+      </div>`;
+    });
     document.getElementById('att-list').innerHTML = h;
   }
 
@@ -811,7 +853,15 @@
   }
 
   function renderNotes(){ let h=""; if(DB.notes) DB.notes.forEach(n=> h+=`<div class="note-item"><div class="note-head" onclick="this.parentElement.classList.toggle('open')"><span>📅 ${toPersianNum(n.date)}</span><span>🔽</span></div><div class="note-body">${n.text}</div></div>`); document.getElementById('notes-history').innerHTML=h; }
-  function renderScoreList(){ let h=""; if(DB.students) DB.students.forEach(s=> h+=`<div class="dash-item" onclick="manualScore('${s.name}')"><span>${s.name}</span><span class="score-badge">دستی: ${toPersianNum(s.manualScore)}</span></div>`); document.getElementById('score-list').innerHTML=h; }
+  function renderScoreList(){
+    let h="";
+    const names = Object.keys(DB.students || {}).sort();
+    names.forEach(name => {
+      const s = DB.students[name];
+      h += `<div class="dash-item" onclick="manualScore('${name}')"><span>${name}</span><span class="score-badge">دستی: ${toPersianNum(s.info.manualScore)}</span></div>`;
+    });
+    document.getElementById('score-list').innerHTML=h;
+  }
   function renderSettings(){ if(DB.settings){ document.getElementById('st-token').value=DB.settings.BOT_TOKEN||""; document.getElementById('st-admin').value=DB.settings.ADMIN_CHAT_IDS||""; } }
 
   function renderClassMI(mi) {
@@ -826,26 +876,32 @@
   }
 
   function openProfile(n){
-    showLoading(); currentStudent = n;
-    google.script.run.withSuccessHandler(d=>{
-      hideLoading();
-      if(!d.success) return showAlert(d.msg, 'error');
-      const i = d.info;
-      document.getElementById('sp-img').src=i.displayImage;
-      document.getElementById('sp-name').innerText = i.name || "";
-      document.getElementById('sp-score').innerText=toPersianNum(i.score)+" امتیاز";
-      document.getElementById('sp-input-img').value=i.image;
-      document.getElementById('sp-bio').value=i.bio || "";
-      document.getElementById('sp-parent-note').value=i.parentNote || "";
-      const cont = document.getElementById('phones-container'); cont.innerHTML = "";
-      let ps = []; try { ps = JSON.parse(i.phone || "[]"); } catch(e) { if(i.phone) ps.push({label:"تلفن", number:i.phone}); }
-      if(ps.length === 0) addPhoneField(); else ps.forEach(p => addPhoneField(p.label, p.number));
-      document.getElementById('sp-dob').value=i.dob || "";
-      document.getElementById('sp-school').value=i.school || "";
-      document.getElementById('sp-medical').value=i.medical || "";
-      renderMIChart(d.mi.chart); renderMIAccordion(d.mi.config, n, d.mi.traitStates); renderFullHistory(d.fullHistory); renderGrowthChart(d.stats.growth); renderSummaryStats(d.stats.stats);
-      nav('single-profile');
-    }).withFailureHandler(e => { hideLoading(); showAlert("خطا در بارگذاری پروفایل: " + e.message, 'error'); }).getFullStudentProfile(n);
+    currentStudent = n;
+    renderStudentProfileData(n);
+    nav('single-profile');
+  }
+
+  function renderStudentProfileData(n) {
+    const s = DB.students[n];
+    if (!s) return;
+    const i = s.info;
+    document.getElementById('sp-img').src=i.displayImage;
+    document.getElementById('sp-name').innerText = i.name || "";
+    document.getElementById('sp-score').innerText=toPersianNum(i.score)+" امتیاز";
+    document.getElementById('sp-input-img').value=i.image;
+    document.getElementById('sp-bio').value=i.bio || "";
+    document.getElementById('sp-parent-note').value=i.parentNote || "";
+    const cont = document.getElementById('phones-container'); cont.innerHTML = "";
+    let ps = []; try { ps = JSON.parse(i.phone || "[]"); } catch(e) { if(i.phone) ps.push({label:"تلفن", number:i.phone}); }
+    if(ps.length === 0) addPhoneField(); else ps.forEach(p => addPhoneField(p.label, p.number));
+    document.getElementById('sp-dob').value=i.dob || "";
+    document.getElementById('sp-school').value=i.school || "";
+    document.getElementById('sp-medical').value=i.medical || "";
+    renderMIChart(s.mi.chart);
+    renderMIAccordion(DB.miConfig, n, s.mi.traitStates);
+    renderFullHistory(s.fullHistory);
+    renderGrowthChart(s.stats.growth);
+    renderSummaryStats(s.stats.stats);
   }
 
   function addPhoneField(l="", n="") {
@@ -860,34 +916,75 @@
       showPrompt("چند دقیقه تاخیر؟", "15", (m) => {
         if(!m){ e.value='Present'; v='Present'; }
         TEMP[n]={s:v, m:m||0};
-        e.style.backgroundColor=v=='Present'?'#dcfce7':(v=='Absent'?'#fee2e2':(v=='Late'?'#fef3c7':'#e0f2fe'));
+        fbDB.ref('live_attendance_draft').set(TEMP); // Real-time sync
       });
     } else {
       TEMP[n]={s:v, m:0};
-      e.style.backgroundColor=v=='Present'?'#dcfce7':(v=='Absent'?'#fee2e2':(v=='Late'?'#fef3c7':'#e0f2fe'));
+      fbDB.ref('live_attendance_draft').set(TEMP); // Real-time sync
     }
   }
 
   function manualScore(n){
     showPrompt(`امتیاز برای ${n}:`, "1", (p) => {
-      if(p) google.script.run.withSuccessHandler(fetchData).addManualScore(n,p);
+      if(p) {
+        // Optimistic UI: Firebase update
+        fbDB.ref(`classDB/students/${n}/info`).update({
+          score: (DB.students[n].info.score || 0) + Number(p),
+          manualScore: (DB.students[n].info.manualScore || 0) + Number(p)
+        });
+        google.script.run.addManualScore(n,p);
+      }
     });
   }
 
-  function submitData(){ if(!DB.students || DB.students.length===0) return showAlert("دانش‌آموزی ثبت نشده است."); showLoading(); const recs=DB.students.map(s=>({name:s.name, status:TEMP[s.name].s, min:TEMP[s.name].m})); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); fetchData(); }).submitAttendance({date:document.getElementById('att-date').value, records:recs}); }
-  function saveNote(){ const d=document.getElementById('note-date').value; const t=document.getElementById('note-text').value; if(!t)return; showLoading(); google.script.run.withSuccessHandler(r=>{showToast(r.msg); document.getElementById('note-text').value=""; fetchData();}).saveNote(d,t); }
+  function submitData(){
+    if(!DB.students || Object.keys(DB.students).length===0) return showAlert("دانش‌آموزی ثبت نشده است.");
+    showLoading();
+    const names = Object.keys(DB.students);
+    const recs = names.map(name => ({name: name, status: TEMP[name].s, min: TEMP[name].m}));
+    google.script.run.withSuccessHandler(r => {
+      hideLoading();
+      showToast(r.msg);
+      fbDB.ref('live_attendance_draft').remove(); // Clear draft
+    }).submitAttendance({date:document.getElementById('att-date').value, records:recs});
+  }
+
+  function saveNote(){
+    const d=document.getElementById('note-date').value;
+    const t=document.getElementById('note-text').value;
+    if(!t) return;
+    showLoading();
+    google.script.run.withSuccessHandler(r=>{
+      showToast(r.msg);
+      document.getElementById('note-text').value="";
+    }).saveNote(d,t);
+  }
   function filterNotes(t){ document.querySelectorAll('.note-item').forEach(i=> i.style.display=i.innerText.includes(t)?'block':'none'); }
   function filterAtt(t){ document.querySelectorAll('#att-list .dash-item').forEach(i=> i.style.display=i.innerText.includes(t)?'flex':'none'); }
-  function saveSettings(){ const d={ BOT_TOKEN: document.getElementById('st-token').value, ADMIN_CHAT_IDS: document.getElementById('st-admin').value }; showLoading(); google.script.run.withSuccessHandler(r=>{hideLoading(); showToast(r.msg); fetchData();}).saveSystemSettings(d); }
+  function saveSettings(){ const d={ BOT_TOKEN: document.getElementById('st-token').value, ADMIN_CHAT_IDS: document.getElementById('st-admin').value }; showLoading(); google.script.run.withSuccessHandler(r=>{hideLoading(); showToast(r.msg);}).saveSystemSettings(d); }
   function testTelegram(){ showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); }).testTelegramConnection(); }
   function setupWebhook(){ showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r); }).setupTelegramWebhook(); }
   function addItemToMod(btn, id, ty){ let inp = btn.parentElement.querySelector('input'); let val = inp.value.trim(); if(!val) return; let ic = ty=='buy'?'🛒':'✅'; document.getElementById('tags-'+id).insertAdjacentHTML('beforeend', `<span class="mat-chip ${ty}" data-type="${ty}"><span>${ic} ${val}</span><span style="cursor:pointer; margin-right:6px;" onclick="this.parentElement.remove()">×</span></span>`); inp.value=""; }
-  function delPlan(id){ google.script.run.withSuccessHandler(fetchData).deletePlan(id); }
+  function delPlan(id){ google.script.run.deletePlan(id); }
   function saveProfile(){
     let ps = []; document.querySelectorAll('.phone-item').forEach(p => { let inps = p.querySelectorAll('input'); if(inps[1].value) ps.push({label: inps[0].value, number: inps[1].value}); });
-    showLoading(); const d={originalName:currentStudent, image:document.getElementById('sp-input-img').value, bio:document.getElementById('sp-bio').value, parentNote:document.getElementById('sp-parent-note').value, phone:JSON.stringify(ps), dob:document.getElementById('sp-dob').value, school:document.getElementById('sp-school').value, medical:document.getElementById('sp-medical').value}; google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); fetchData(); }).updateStudentProfile(d);
+    showLoading();
+    const d={originalName:currentStudent, image:document.getElementById('sp-input-img').value, bio:document.getElementById('sp-bio').value, parentNote:document.getElementById('sp-parent-note').value, phone:JSON.stringify(ps), dob:document.getElementById('sp-dob').value, school:document.getElementById('sp-school').value, medical:document.getElementById('sp-medical').value};
+
+    // Real-time optimistic update
+    fbDB.ref(`classDB/students/${currentStudent}/info`).update({
+      image: d.image, bio: d.bio, parentNote: d.parentNote, phone: d.phone, dob: d.dob, school: d.school, medical: d.medical
+    });
+
+    google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); }).updateStudentProfile(d);
   }
-  function addStudent(){ let n=document.getElementById('new-name').value; if(n) google.script.run.withSuccessHandler(fetchData).addStudent(n); }
+  function addStudent(){
+    let n=document.getElementById('new-name').value;
+    if(n) {
+      showLoading();
+      google.script.run.withSuccessHandler(() => { document.getElementById('new-name').value=""; }).addStudent(n);
+    }
+  }
   function toggleDark(){ document.body.classList.toggle('dark-mode'); toggleSidebar(); }
   function openPlanModal(){ document.getElementById('p-id').value=""; document.getElementById('modules-container').innerHTML=""; document.getElementById('plan-modal').style.display='flex'; }
 
@@ -930,7 +1027,11 @@
       let its = []; el.querySelectorAll('.mat-chip').forEach(c=> its.push({name: c.querySelector('span').innerText.substring(2).trim(), type: c.classList.contains('buy') ? 'buy' : 'have'}));
       mods.push({type: el.querySelector('.m-type').value, name: el.querySelector('.m-name').value, desc: el.querySelector('.m-desc').value, items: its});
     });
-    showLoading(); google.script.run.withSuccessHandler(r=>{ showToast(r.msg); document.getElementById('plan-modal').style.display='none'; fetchData(); }).savePlan(idVal,dVal,tVal,sVal,JSON.stringify(mods));
+    showLoading();
+    google.script.run.withSuccessHandler(r=>{
+      showToast(r.msg);
+      document.getElementById('plan-modal').style.display='none';
+    }).savePlan(idVal,dVal,tVal,sVal,JSON.stringify(mods));
   }
 
   function renderMIChart(d){
@@ -961,7 +1062,11 @@
     document.getElementById('sp-mi-accordion').innerHTML = h;
   }
 
-  function logMI(n,t,b,s){ showLoading(); google.script.run.withSuccessHandler(()=>{ hideLoading(); showToast("بروزرسانی شد"); openProfile(n); }).submitMILog(n,t,b,s); }
+  function logMI(n,t,b,s){
+    // Optimistic Update
+    fbDB.ref(`classDB/students/${n}/mi/traitStates`).update({ [t + "_" + b]: s });
+    google.script.run.withSuccessHandler(()=>{ showToast("بروزرسانی شد"); }).submitMILog(n,t,b,s);
+  }
 
   function renderFullHistory(h){
     if(!h || h.length === 0) { document.getElementById('sp-mi-history').innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;"><i class="fas fa-history" style="font-size:2rem; display:block; margin-bottom:10px; opacity:0.3;"></i>هنوز فعالیتی ثبت نشده است.</div>`; return; }
@@ -1036,15 +1141,32 @@
   function resetTimer() { stopTimer(); timerSec=0; updateTimerDisplay(); }
   function updateTimerDisplay() { const m = Math.floor(timerSec/60); const s = timerSec%60; document.getElementById('timer-display').innerText = `${toPersianNum(m.toString().padStart(2,'0'))}:${toPersianNum(s.toString().padStart(2,'0'))}`; }
 
-  function openManualGrouping() { if(!DB.students || DB.students.length===0) return showAlert("هنوز دانش‌آموزی ندارید!", 'error'); document.getElementById('g-date').value = new Date().toLocaleDateString('fa-IR'); document.getElementById('g-model').value = ""; document.getElementById('g-current-name').value = ""; tempGroups = []; renderGroupStudentGrid(); renderAddedGroups(); document.getElementById('manual-grouping-modal').style.display='flex'; }
-  function renderGroupStudentGrid() { let h = ""; DB.students.forEach(s => { h += `<div class="student-select-card" onclick="toggleStudentSelection(this, '${s.name}')"><img src="${s.image}"><span>${s.name}</span><i class="fas fa-check-circle"></i></div>`; }); document.getElementById('g-students-list').innerHTML = h; }
+  function openManualGrouping() {
+    if(!DB.students || Object.keys(DB.students).length===0) return showAlert("هنوز دانش‌آموزی ندارید!", 'error');
+    document.getElementById('g-date').value = new Date().toLocaleDateString('fa-IR');
+    document.getElementById('g-model').value = "";
+    document.getElementById('g-current-name').value = "";
+    tempGroups = [];
+    renderGroupStudentGrid();
+    renderAddedGroups();
+    document.getElementById('manual-grouping-modal').style.display='flex';
+  }
+  function renderGroupStudentGrid() {
+    let h = "";
+    const names = Object.keys(DB.students).sort();
+    names.forEach(name => {
+      const s = DB.students[name];
+      h += `<div class="student-select-card" onclick="toggleStudentSelection(this, '${name}')"><img src="${s.info.displayImage}"><span>${name}</span><i class="fas fa-check-circle"></i></div>`;
+    });
+    document.getElementById('g-students-list').innerHTML = h;
+  }
   function toggleStudentSelection(el, name) { el.classList.toggle('selected'); }
   function addGroupToList() { const gName = document.getElementById('g-current-name').value; let members = []; document.querySelectorAll('.student-select-card.selected').forEach(el => { members.push(el.querySelector('span').innerText); }); if(!gName) return showAlert("لطفا نام گروه را وارد کنید"); if(members.length === 0) return showAlert("حداقل یک نفر را انتخاب کنید"); tempGroups.push({name: gName, members: members}); document.getElementById('g-current-name').value = ""; document.querySelectorAll('.student-select-card.selected').forEach(el => el.classList.remove('selected')); renderAddedGroups(); showToast("گروه اضافه شد"); }
   function renderAddedGroups() { let h = ""; tempGroups.forEach((g, index) => { h += `<div class="added-group-card"><div><b>${g.name}:</b> <span style="font-size:0.9rem; color:#666;">${g.members.join('، ')}</span></div><span style="color:red; cursor:pointer;" onclick="removeTempGroup(${index})"><i class="fas fa-trash"></i></span></div>`; }); document.getElementById('added-groups-container').innerHTML = h || '<small style="color:#999;">هنوز گروهی اضافه نشده است.</small>'; }
   function removeTempGroup(index) { tempGroups.splice(index, 1); renderAddedGroups(); }
-  function saveFinalGrouping() { const d = document.getElementById('g-date').value; const model = document.getElementById('g-model').value; if(!model) return showAlert("لطفا عنوان مدل گروه‌بندی را وارد کنید"); if(tempGroups.length === 0) return showAlert("هیچ گروهی ایجاد نشده است!"); const details = JSON.stringify({ isMultiGroup: true, groups: tempGroups }); showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); document.getElementById('manual-grouping-modal').style.display='none'; fetchData(); }).saveManualLog({date: d, type: 'grouping', title: model, details: details}); }
+  function saveFinalGrouping() { const d = document.getElementById('g-date').value; const model = document.getElementById('g-model').value; if(!model) return showAlert("لطفا عنوان مدل گروه‌بندی را وارد کنید"); if(tempGroups.length === 0) return showAlert("هیچ گروهی ایجاد نشده است!"); const details = JSON.stringify({ isMultiGroup: true, groups: tempGroups }); showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); document.getElementById('manual-grouping-modal').style.display='none'; }).saveManualLog({date: d, type: 'grouping', title: model, details: details}); }
   function openFreeActivity() { document.getElementById('fa-date').value = new Date().toLocaleDateString('fa-IR'); document.getElementById('free-activity-modal').style.display='flex'; }
-  function saveFreeActivityLog() { const d = document.getElementById('fa-date').value; const t = document.getElementById('fa-title').value; const desc = document.getElementById('fa-desc').value; if(!t) return showAlert("عنوان الزامی است"); showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); document.getElementById('free-activity-modal').style.display='none'; document.getElementById('fa-title').value = ""; document.getElementById('fa-desc').value = ""; fetchData(); }).saveManualLog({date: d, type: 'free_activity', title: t, details: desc}); }
+  function saveFreeActivityLog() { const d = document.getElementById('fa-date').value; const t = document.getElementById('fa-title').value; const desc = document.getElementById('fa-desc').value; if(!t) return showAlert("عنوان الزامی است"); showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); document.getElementById('free-activity-modal').style.display='none'; document.getElementById('fa-title').value = ""; document.getElementById('fa-desc').value = ""; }).saveManualLog({date: d, type: 'free_activity', title: t, details: desc}); }
   let currentArchiveType = 'grouping';
   function filterArchive(query) { const list = document.getElementById('archive-list'); let h = ""; if(!query || query.trim() === "") { renderArchive(currentArchiveType); return; } const allItems = DB.moduleHistory || []; const filtered = allItems.filter(item => { let searchStr = (item.title + " " + item.date + " " + (item.details || "")).toLowerCase(); return searchStr.includes(query.toLowerCase()); }); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">موردی یافت نشد.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
   function renderArchive(type, tabElement) { if(tabElement) { document.querySelectorAll('#view-archive .tab').forEach(t => t.classList.remove('active')); tabElement.classList.add('active'); } currentArchiveType = type; document.getElementById('archive-search').value = ""; const list = document.getElementById('archive-list'); let h = ""; const filtered = (DB.moduleHistory || []).filter(item => item.type === type); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">هنوز موردی در این دسته ثبت نشده است.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }

@@ -1,4 +1,9 @@
 // --- تنظیمات و ساختار دیتابیس ---
+const FB_CONFIG = {
+  URL: "[YOUR_FIREBASE_URL]", // e.g. https://your-db-name.firebaseio.com/
+  SECRET: "[YOUR_FIREBASE_SECRET]"
+};
+
 const CONFIG = {
   SHEETS: {
     PEOPLE: "افراد",
@@ -37,46 +42,194 @@ function doGet(e) {
 }
 
 function getAppData() {
+  return getComprehensiveAppData();
+}
+
+/**
+ * این تابع تمام اطلاعات سیستم را در یک ساختار JSON واحد جمع‌آوری می‌کند
+ * برای سینک با فایربیس و استفاده در کلاینت بدون تاخیر
+ */
+function getComprehensiveAppData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   checkSheets(ss);
   updateCalculations(ss);
 
+  const students = {};
   const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
-  // اگر شیت افراد نبود، بازگشت ساختار خالی
-  if (!shP) return { students: [], trend: {labels:[], data:[]}, notes: [], plans: [], settings: {}, moduleHistory: [] };
+  if (!shP) return { students: {} };
 
   const pData = shP.getDataRange().getValues();
-  let students = [];
-  if (pData.length > 1) {
-    for (let i = 1; i < pData.length; i++) {
-      if (pData[i][0]) {
-        students.push({
-          name: String(pData[i][0]),
-          score: Number(pData[i][3]) || 0,
-          manualScore: Number(pData[i][6]) || 0,
-          image: fixUrl(pData[i][5]),
-          fire: (Number(pData[i][1]) === 0)
-        });
+
+  // دریافت اطلاعات عمومی یکبار برای کل کلاس
+  const notes = getNotesList(ss);
+  const plans = getPlans(ss);
+  const settings = getSystemSettings(ss);
+  const moduleHistory = getCombinedHistory(ss);
+  const trend = getTrendData(ss);
+  const classMIData = getClassMIData();
+
+  // دریافت لاگ‌های هوش یکبار برای پردازش
+  const shLogs = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
+  const shConf = ss.getSheetByName(CONFIG.SHEETS.MI_CONFIG);
+  const miLogs = shLogs ? shLogs.getDataRange().getValues() : [];
+  const miConfRaw = shConf ? shConf.getDataRange().getValues() : [];
+  const miConf = [];
+  for(let i=1; i<miConfRaw.length; i++) {
+    miConf.push({
+      type: miConfRaw[i][0],
+      desc: miConfRaw[i][1],
+      pos: miConfRaw[i][2] ? String(miConfRaw[i][2]).split(',') : [],
+      neg: miConfRaw[i][3] ? String(miConfRaw[i][3]).split(',') : []
+    });
+  }
+
+  // دریافت اطلاعات حضور و غیاب
+  const shA = ss.getSheetByName(CONFIG.SHEETS.ATT);
+  const attData = shA ? shA.getDataRange().getValues() : [];
+
+  for (let i = 1; i < pData.length; i++) {
+    const name = String(pData[i][0]);
+    if (!name) continue;
+
+    // ۱. اطلاعات پایه
+    const info = {
+      name: name,
+      absent: Number(pData[i][1]) || 0,
+      late: Number(pData[i][2]) || 0,
+      score: Number(pData[i][3]) || 0,
+      image: pData[i][5] || "",
+      displayImage: fixUrl(pData[i][5]),
+      manualScore: Number(pData[i][6]) || 0,
+      bio: pData[i][7] ? String(pData[i][7]) : "",
+      phone: pData[i][8] ? String(pData[i][8]) : "[]",
+      dob: pData[i][10] ? String(pData[i][10]) : "",
+      school: pData[i][11] ? String(pData[i][11]) : "",
+      medical: pData[i][12] ? String(pData[i][12]) : "",
+      parentNote: pData[i][13] ? String(pData[i][13]) : "",
+      totalDelayMins: Number(pData[i][14]) || 0,
+      fire: (Number(pData[i][1]) === 0)
+    };
+
+    // ۲. پروفایل هوش برای این فرد
+    const traitStates = {};
+    const miHistory = [];
+    if (miLogs.length > 0) {
+      for(let j=1; j<miLogs.length; j++) {
+        if(String(miLogs[j][1]) === name) {
+          let type = miLogs[j][2];
+          let behavior = miLogs[j][3];
+          let score = Number(miLogs[j][4]);
+          traitStates[type + "_" + behavior] = score;
+          miHistory.push({ date: new Date(miLogs[j][0]).toLocaleDateString('fa-IR'), type, behavior, score });
+        }
       }
     }
+
+    const miScores = {};
+    miConf.forEach(c => {
+      miScores[c.type] = 0;
+      c.pos.forEach(p => miScores[c.type] += (traitStates[c.type + "_" + p] || 0));
+      c.neg.forEach(n => miScores[c.type] += (traitStates[c.type + "_" + n] || 0));
+    });
+
+    const studentMI = {
+      chart: { labels: miConf.map(c => c.type), data: miConf.map(c => Math.max(0, miScores[c.type])) },
+      history: miHistory.reverse().slice(0, 20),
+      traitStates: traitStates
+    };
+
+    // ۳. آمار و تاریخچه حضور
+    let ri = -1;
+    for (let k = 1; k < attData.length; k++) if (String(attData[k][0]) === name) { ri = k; break; }
+
+    const h = [], s = { p: 0, a: 0, l: 0, e: 0, lm: 0 }, gl = [], gd = [];
+    let sys = 0;
+    if (ri > -1) {
+      const he = attData[0];
+      for (let c = 1; c < he.length; c++) {
+        let v = String(attData[ri][c]), da = (he[c] instanceof Date) ? he[c].toLocaleDateString('fa-IR') : String(he[c]);
+        if (v && v != "") {
+          if (v.includes("حاضر")) { sys++; s.p++ }
+          else if (v.includes("غیبت")) { sys--; s.a++ }
+          else if (v.includes("تاخیر")) {
+            sys++; s.l++;
+            let minsMatch = v.match(/\(([^)]+)\)/);
+            if (minsMatch) {
+              let minsStr = minsMatch[1].replace(/[^0-9۰-۹]/g, '');
+              s.lm += parseInt(toEnglishDigits(minsStr)) || 0;
+            }
+          }
+          else if (v.includes("موجه")) { s.e++ }
+          gl.push(normalizeDateStr(da));
+          gd.push(sys + info.manualScore);
+        }
+      }
+      for (let c = he.length - 1; c >= 1; c--) {
+        let v = String(attData[ri][c]), da = (he[c] instanceof Date) ? he[c].toLocaleDateString('fa-IR') : String(he[c]);
+        if (v != "") h.push({ date: normalizeDateStr(da), status: v });
+      }
+    }
+
+    // ۴. تاریخچه جامع
+    const fullHistory = [];
+    miHistory.forEach(mh => {
+      let statusText = mh.score === 1 ? "✅ مثبت" : (mh.score === -1 ? "❌ منفی" : "⚪ خنثی");
+      fullHistory.push({ date: normalizeDateStr(mh.date), type: 'mi', title: mh.type, desc: mh.behavior + " (" + statusText + ")", score: mh.score, icon: '🧠' });
+    });
+    h.forEach(att => fullHistory.push({ date: att.date, type: 'att', title: 'حضور و غیاب', desc: att.status, icon: att.status.includes('حاضر')?'✅':(att.status.includes('غیبت')?'❌':'⏰') }));
+
+    const attDates = h.map(x => x.date);
+    moduleHistory.forEach(act => {
+      if(attDates.includes(act.date)) fullHistory.push({ date: act.date, type: 'activity', title: act.title, desc: act.type === 'grouping' ? 'شرکت در گروه‌بندی' : (act.details || 'شرکت در فعالیت کلاسی'), icon: '🎯' });
+    });
+    fullHistory.sort((a, b) => b.date.localeCompare(a.date));
+
+    students[name] = {
+      info: info,
+      mi: studentMI,
+      stats: { history: h, stats: s, scores: { system: sys, manual: info.manualScore, total: sys + info.manualScore }, growth: { labels: gl, data: gd } },
+      fullHistory: fullHistory
+    };
   }
-  // مرتب‌سازی دانش‌آموزان بر اساس امتیاز (بیشترین بالا)
-  students.sort((a, b) => b.score - a.score);
 
-  const maxScore = students.length > 0 ? students[0].score : -1;
-  const topStudents = students.filter(s => s.score === maxScore && maxScore > 0).map(s => s.name).join(" - ");
-
-  const plans = getPlans(ss);
+  const sortedStudentList = Object.values(students).sort((a, b) => b.info.score - a.info.score);
+  const maxScore = sortedStudentList.length > 0 ? sortedStudentList[0].info.score : -1;
+  const topStudents = sortedStudentList.filter(s => s.info.score === maxScore && maxScore > 0).map(s => s.info.name).join(" - ");
 
   return {
     students: students,
-    trend: getTrendData(ss),
+    trend: trend,
     topStudent: topStudents || "---",
-    notes: getNotesList(ss),
+    notes: notes,
     plans: plans,
-    settings: getSystemSettings(ss),
-    moduleHistory: getCombinedHistory(ss)
+    settings: settings,
+    moduleHistory: moduleHistory,
+    classMI: classMIData,
+    miConfig: miConf
   };
+}
+
+/**
+ * همگام‌سازی اطلاعات شیت با فایربیس (REST API)
+ */
+function syncSheetToFirebase() {
+  if (FB_CONFIG.URL.includes("[YOUR_")) return {success: false, msg: "تنظیمات فایربیس انجام نشده است"};
+
+  const data = getComprehensiveAppData();
+  const url = `${FB_CONFIG.URL}/classDB.json?auth=${FB_CONFIG.SECRET}`;
+  const options = {
+    method: 'put',
+    contentType: 'application/json',
+    payload: JSON.stringify(data)
+  };
+
+  try {
+    UrlFetchApp.fetch(url, options);
+    return { success: true, msg: "Firebase Synced 🔄" };
+  } catch (e) {
+    Logger.log("Sync Error: " + e.message);
+    return { success: false, msg: e.message };
+  }
 }
 
 function getFullStudentProfile(studentName) {
@@ -466,6 +619,7 @@ function saveManualLog(data) {
 
   sendBeautifulNotification(typeName, typeIcon, sections);
 
+  syncSheetToFirebase();
   return { success: true, msg: "✅ ثبت شد." };
 }
 
@@ -583,6 +737,7 @@ function saveSystemSettings(f) {
   for(let i=1; i<d.length; i++) {
     if(f[d[i][0]] !== undefined) sh.getRange(i+1, 2).setValue(f[d[i][0]]);
   }
+  syncSheetToFirebase();
   return {success: true, msg: "✅ تنظیمات ذخیره شد."};
 }
 
@@ -769,6 +924,7 @@ function savePlan(id, date, title, sin, modules) {
 
     sendBeautifulNotification("طرح درس جدید ثبت شد", "📚", sections);
 
+    syncSheetToFirebase();
     return {success: true, msg: "✅ طرح درس با موفقیت ذخیره شد."};
 }
 
@@ -845,6 +1001,7 @@ function submitAttendance(data) {
     if(e.length) sections.push({ title: "🏳️ غایبین موجه", pre: escapeHtml(e.join('، ')) });
 
     sendBeautifulNotification("گزارش حضور و غیاب", "📊", sections, null, photoUrl);
+    syncSheetToFirebase();
     return {success: true, msg: "✅ حضور و غیاب ثبت شد."};
 }
 function saveNote(d, t) {
@@ -855,10 +1012,11 @@ function saveNote(d, t) {
     { italic: escapeHtml(t) }
   ]);
 
+  syncSheetToFirebase();
   return { success: true, msg: "یادداشت ذخیره شد" };
 }
-function addStudent(n){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE).appendRow([n,0,0,0,"ثبت نام","",0]);return{success:true};}
-function delStudent(n){const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=0;i<d.length;i++)if(d[i][0]==n){sh.deleteRow(i+1);return{success:true};}}
+function addStudent(n){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE).appendRow([n,0,0,0,"ثبت نام","",0]); syncSheetToFirebase(); return{success:true};}
+function delStudent(n){const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=0;i<d.length;i++)if(d[i][0]==n){sh.deleteRow(i+1); syncSheetToFirebase(); return{success:true};}}
 function addManualScore(n, p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
@@ -873,6 +1031,7 @@ function addManualScore(n, p) {
         { label: "تغییر امتیاز", value: (p > 0 ? '+' : '') + p },
         { label: "مجموع امتیازات", value: (Number(d[i][3]) || 0) + Number(p) }
       ]);
+      syncSheetToFirebase();
       return { success: true, msg: "✅ امتیاز ثبت شد" };
     }
   }
@@ -890,9 +1049,10 @@ function submitMILog(sn, it, bh, sc) {
     { italic: escapeHtml(bh) }
   ]);
 
+  syncSheetToFirebase();
   return { success: true, msg: "✅ ثبت شد" };
 }
-function deletePlan(id){const ss=SpreadsheetApp.getActiveSpreadsheet();const sh=ss.getSheetByName(CONFIG.SHEETS.PLANS);const d=sh.getDataRange().getValues();for(let i=1;i<d.length;i++)if(String(d[i][5]).trim()==String(id).trim()){sh.deleteRow(i+1);const shE=ss.getSheetByName(CONFIG.SHEETS.ESSENTIALS);const edat=shE.getDataRange().getValues();for(let j=edat.length-1;j>=1;j--)if(String(edat[j][0]).trim()==String(id).trim())shE.deleteRow(j+1);return{success:true,msg:"🗑 طرح درس حذف شد"}}return{success:false}}
+function deletePlan(id){const ss=SpreadsheetApp.getActiveSpreadsheet();const sh=ss.getSheetByName(CONFIG.SHEETS.PLANS);const d=sh.getDataRange().getValues();for(let i=1;i<d.length;i++)if(String(d[i][5]).trim()==String(id).trim()){sh.deleteRow(i+1);const shE=ss.getSheetByName(CONFIG.SHEETS.ESSENTIALS);const edat=shE.getDataRange().getValues();for(let j=edat.length-1;j>=1;j--)if(String(edat[j][0]).trim()==String(id).trim())shE.deleteRow(j+1); syncSheetToFirebase(); return{success:true,msg:"🗑 طرح درس حذف شد"}}return{success:false}}
 function updateStudentProfile(data){
   const ss=SpreadsheetApp.getActiveSpreadsheet();
   const shP=ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
@@ -906,6 +1066,7 @@ function updateStudentProfile(data){
       shP.getRange(i+1,12).setValue(data.school || "");
       shP.getRange(i+1,13).setValue(data.medical || "");
       shP.getRange(i+1,14).setValue(data.parentNote || "");
+      syncSheetToFirebase();
       return{success:true,msg:"✅ بروزرسانی شد"};
     }
   }
