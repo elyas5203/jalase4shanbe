@@ -307,8 +307,10 @@
         <div style="font-size:1.3rem; font-weight:bold; color:var(--primary); margin-top:8px;" id="top-student">...</div>
       </div>
       <div class="card">
-        <div style="position: relative; height: 220px; width: 100%;">
-          <canvas id="mainChart"></canvas>
+        <div style="overflow-x: auto; overflow-y: hidden; width: 100%; border-radius: 12px;">
+          <div id="mainChart-container" style="position: relative; height: 220px; width: 100%;">
+            <canvas id="mainChart"></canvas>
+          </div>
         </div>
       </div>
       <div id="class-mi-section" class="card" style="display:none;">
@@ -364,6 +366,7 @@
         <h2 id="sp-name" style="margin:12px 0 6px;"></h2>
         <div id="sp-score" class="score-badge">0 امتیاز</div>
         <button class="btn btn-blue" style="margin-top:15px; font-size:0.9rem;" onclick="openReportCard()">📄 صدور کارنامه عملکرد</button>
+        <button class="btn btn-red" style="margin-top:10px; font-size:0.9rem;" onclick="askDeleteStudent()">🗑 حذف متربی</button>
       </div>
       <div class="tabs">
         <div class="tab active" onclick="switchTab('info')">ℹ️ مشخصات</div>
@@ -573,6 +576,20 @@
       </div>
   </div>
 
+  <!-- MODAL: OTP -->
+  <div id="otp-modal" class="modal" style="z-index: 9000;">
+    <div class="confirm-box">
+      <div style="font-size: 3rem; margin-bottom: 15px; color: var(--danger);"><i class="fas fa-shield-alt"></i></div>
+      <h3 style="margin: 0; font-size: 1.2rem;">تایید هویت دو مرحله‌ای</h3>
+      <p style="font-size: 0.9rem; color: #666; margin-top: 10px;">کد ۵ رقمی ارسال شده به تلگرام را وارد کنید:</p>
+      <input type="number" id="otp-input" style="margin-top: 20px; text-align: center; font-size: 1.8rem; font-weight: 800; border-color: var(--danger); letter-spacing: 8px;" placeholder="-----">
+      <div style="display:flex; gap:10px; margin-top:15px;">
+        <button class="btn btn-green" onclick="verifyOtpAndDel()" style="border-radius: 12px; padding: 12px;">تایید و حذف قطعی</button>
+        <button class="btn btn-red" onclick="document.getElementById('otp-modal').style.display='none'" style="border-radius: 12px; padding: 12px; background: #94a3b8;">انصراف</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: REPORT CARD -->
   <div class="modal" id="report-modal">
       <div class="modal-box report-card-modal">
@@ -771,7 +788,8 @@
 
     // ۲. لیسنر درفت حضور و غیاب (همزمان)
     fbDB.ref('live_attendance_draft').on('value', snapshot => {
-      TEMP = snapshot.val() || {};
+      const val = snapshot.val();
+      TEMP = val === null ? {} : val;
       if (document.getElementById('view-att').classList.contains('active')) renderAtt();
     });
   }
@@ -796,12 +814,19 @@
         if(chartInst) chartInst.destroy();
         const trendLabels = DB.trend.labels || [];
         const trendData = DB.trend.data || [];
+
+        // Dynamically scale chart width
+        const chartContainer = document.getElementById('mainChart-container');
+        const minWidth = trendLabels.length * 40;
+        chartContainer.style.width = minWidth > chartContainer.parentElement.offsetWidth ? minWidth + 'px' : '100%';
+
         chartInst = new Chart(document.getElementById('mainChart'), {
           type:'line',
           data:{labels:trendLabels, datasets:[{label:'حضور %', data:trendData, borderColor:'#4f46e5', tension:0.35, fill:true, backgroundColor:'rgba(79,70,229,0.1)'}]},
           options:{
             responsive: true,
             maintainAspectRatio: false,
+            animation: false,
             interaction: { mode: 'index', intersect: false },
             plugins:{
               legend:{display:false},
@@ -1017,7 +1042,10 @@
     if(!DB.students || Object.keys(DB.students).length===0) return showAlert("دانش‌آموزی ثبت نشده است.");
     showLoading();
     const names = Object.keys(DB.students);
-    const recs = names.map(name => ({name: name, status: TEMP[name].s, min: TEMP[name].m}));
+    const recs = names.map(name => {
+      const t = TEMP[name] || {s: 'Present', m: 0};
+      return {name: name, status: t.s, min: t.m};
+    });
     google.script.run.withSuccessHandler(r => {
       hideLoading();
       showToast(r.msg);
@@ -1042,6 +1070,40 @@
   function setupWebhook(){ showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r); }).setupTelegramWebhook(); }
   function addItemToMod(btn, id, ty){ let inp = btn.parentElement.querySelector('input'); let val = inp.value.trim(); if(!val) return; let ic = ty=='buy'?'🛒':'✅'; document.getElementById('tags-'+id).insertAdjacentHTML('beforeend', `<span class="mat-chip ${ty}" data-type="${ty}"><span>${ic} ${val}</span><span style="cursor:pointer; margin-right:6px;" onclick="this.parentElement.remove()">×</span></span>`); inp.value=""; }
   function delPlan(id){ google.script.run.deletePlan(id); }
+
+  function askDeleteStudent() {
+    showConfirm(`آیا از حذف کامل متربی «${currentStudent}» اطمینان دارید؟ این عمل غیرقابل بازگشت است.`, () => {
+      showLoading();
+      google.script.run.withSuccessHandler(r => {
+        hideLoading();
+        if(r.success) {
+          document.getElementById('otp-modal').style.display = 'flex';
+          document.getElementById('otp-input').value = "";
+          document.getElementById('otp-input').focus();
+          showToast("کد تایید به تلگرام ارسال شد.");
+        } else {
+          showAlert(r.msg, 'error');
+        }
+      }).requestDeleteOTP(currentStudent);
+    });
+  }
+
+  function verifyOtpAndDel() {
+    const otp = document.getElementById('otp-input').value;
+    if(otp.length !== 5) return showToast("کد باید ۵ رقم باشد", 'error');
+
+    showLoading();
+    google.script.run.withSuccessHandler(r => {
+      hideLoading();
+      if(r.success) {
+        document.getElementById('otp-modal').style.display = 'none';
+        showToast(r.msg);
+        nav('profiles');
+      } else {
+        showAlert(r.msg, 'error');
+      }
+    }).verifyAndDeleteStudent(currentStudent, otp);
+  }
   function saveProfile(){
     let ps = []; document.querySelectorAll('.phone-item').forEach(p => { let inps = p.querySelectorAll('input'); if(inps[1].value) ps.push({label: inps[0].value, number: inps[1].value}); });
 

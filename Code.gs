@@ -346,9 +346,61 @@ function doPost(e) {
     // Handle Message Commands
     if (update.message && update.message.text) {
       let txt = update.message.text;
+      let chatId = update.message.chat.id;
+
       if (txt === "/start" || txt === "/status") {
-        sendSimpleMsg(token, update.message.chat.id, "<b>🚀 سامانه مدیریت هوشمند کلاس</b>\n<b>────────────────</b>\n✅ وضعیت: <code>فعال و متصل</code>\n⏱ زمان: <code>" + new Date().toLocaleString('fa-IR') + "</code>\n<b>────────────────</b>\n✨ آماده دریافت گزارش‌ها.");
+        const keyboard = {
+          keyboard: [
+            [{ text: "📊 آمار کلاس" }, { text: "🏆 نفرات برتر" }],
+            [{ text: "📋 لیست متربیان" }, { text: "🔗 دریافت لینک ورود" }]
+          ],
+          resize_keyboard: true,
+          persistent: true
+        };
+        sendTelegramMsgWithBtn(token, chatId, "<b>🚀 سامانه مدیریت هوشمند کلاس</b>\n<b>────────────────</b>\n✅ وضعیت: <code>فعال و متصل</code>\n⏱ زمان: <code>" + new Date().toLocaleString('fa-IR') + "</code>\n<b>────────────────</b>\n✨ از منوی زیر برای دریافت گزارش‌ها استفاده کنید.", keyboard);
         return output;
+      }
+
+      const appData = getComprehensiveAppData();
+      const students = Object.values(appData.students || {});
+
+      if (txt === "📊 آمار کلاس") {
+        const total = students.length;
+        const trend = appData.trend || { data: [] };
+        const avgAtt = trend.data.length > 0 ? trend.data[trend.data.length - 1] : 0;
+        const top = appData.topStudent || "---";
+
+        let msg = "<b>📊 آمار کلی کلاس</b>\n<b>────────────────</b>\n";
+        msg += `👥 تعداد کل متربیان: <code>${total} نفر</code>\n`;
+        msg += `📈 درصد حضور آخرین جلسه: <code>${avgAtt}%</code>\n`;
+        msg += `🥇 متربی برتر فعلی: <code>${top}</code>\n`;
+        msg += "<b>────────────────</b>";
+        sendSimpleMsg(token, chatId, msg);
+      }
+      else if (txt === "🏆 نفرات برتر") {
+        const sorted = students.sort((a, b) => (b.info?.score || 0) - (a.info?.score || 0)).slice(0, 10);
+        let msg = "<b>🏆 لیست نفرات برتر</b>\n<b>────────────────</b>\n";
+        sorted.forEach((s, i) => {
+          msg += `${i + 1}. <b>${s.info.name}</b> ➔ <code>${s.info.score} امتیاز</code>\n`;
+        });
+        msg += "<b>────────────────</b>";
+        sendSimpleMsg(token, chatId, msg);
+      }
+      else if (txt === "📋 لیست متربیان") {
+        const names = students.map(s => s.info.name).sort();
+        let msg = "<b>📋 لیست اسامی متربیان</b>\n<b>────────────────</b>\n";
+        names.forEach((n, i) => {
+          msg += `${i + 1}. ${n}\n`;
+        });
+        msg += "<b>────────────────</b>";
+        sendSimpleMsg(token, chatId, msg);
+      }
+      else if (txt === "🔗 دریافت لینک ورود") {
+        const url = ScriptApp.getService().getUrl();
+        let msg = "<b>🔗 لینک ورود به سامانه</b>\n<b>────────────────</b>\n";
+        msg += `🌐 برای مدیریت کلاس روی لینک زیر کلیک کنید:\n\n${url}\n`;
+        msg += "<b>────────────────</b>";
+        sendSimpleMsg(token, chatId, msg);
       }
     }
 
@@ -1016,6 +1068,65 @@ function saveNote(d, t) {
   return { success: true, msg: "یادداشت ذخیره شد" };
 }
 function addStudent(n){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE).appendRow([n,0,0,0,"ثبت نام","",0]); syncSheetToFirebase(); return{success:true};}
+function requestDeleteOTP(studentName) {
+  const otp = Math.floor(10000 + Math.random() * 90000).toString();
+  CacheService.getScriptCache().put(`OTP_${studentName}`, otp, 300); // 5 minutes
+
+  const msg = `🚨 <b>درخواست حذف متربی</b>\n<b>────────────────</b>\n👤 نام متربی: <code>${escapeHtml(studentName)}</code>\n🔑 کد تایید: <code>${otp}</code>\n<b>────────────────</b>\n⚠️ این کد ۵ دقیقه اعتبار دارد.`;
+  notifyAdmins(msg);
+
+  return { success: true };
+}
+
+function verifyAndDeleteStudent(studentName, otp) {
+  const cachedOtp = CacheService.getScriptCache().get(`OTP_${studentName}`);
+  if (!cachedOtp || cachedOtp !== otp) {
+    return { success: false, msg: "❌ کد تایید نامعتبر است یا منقضی شده است." };
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1. Delete from Individuals (افراد)
+  const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
+  if (shP) {
+    const data = shP.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][0]) === studentName) shP.deleteRow(i + 1);
+    }
+  }
+
+  // 2. Delete from Attendance (حضور و غیاب)
+  const shA = ss.getSheetByName(CONFIG.SHEETS.ATT);
+  if (shA) {
+    const data = shA.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][0]) === studentName) shA.deleteRow(i + 1);
+    }
+  }
+
+  // 3. Delete from MI Logs (لاگ_هوش)
+  const shMI = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
+  if (shMI) {
+    const data = shMI.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][1]) === studentName) shMI.deleteRow(i + 1);
+    }
+  }
+
+  // 4. Delete from Firebase
+  const url = `${FB_CONFIG.URL}/classDB/students/${encodeURIComponent(studentName)}.json?auth=${FB_CONFIG.SECRET}`;
+  try {
+    UrlFetchApp.fetch(url, { method: 'delete' });
+  } catch (e) { Logger.log("Firebase Student Delete Error: " + e.message); }
+
+  CacheService.getScriptCache().remove(`OTP_${studentName}`);
+  syncSheetToFirebase();
+
+  notifyAdmins(`✅ <b>متربی حذف شد</b>\n<b>────────────────</b>\n👤 نام: <code>${escapeHtml(studentName)}</code>\n🗑 تمامی سوابق این فرد از سیستم حذف گردید.`);
+
+  return { success: true, msg: "✅ متربی و تمامی سوابق او با موفقیت حذف شدند." };
+}
+
 function delStudent(n){const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=0;i<d.length;i++)if(d[i][0]==n){sh.deleteRow(i+1); syncSheetToFirebase(); return{success:true};}}
 function addManualScore(n, p) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
