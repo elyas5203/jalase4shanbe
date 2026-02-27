@@ -1044,15 +1044,25 @@
   function delPlan(id){ google.script.run.deletePlan(id); }
   function saveProfile(){
     let ps = []; document.querySelectorAll('.phone-item').forEach(p => { let inps = p.querySelectorAll('input'); if(inps[1].value) ps.push({label: inps[0].value, number: inps[1].value}); });
-    showLoading();
+
     const d={originalName:currentStudent, image:document.getElementById('sp-input-img').value, bio:document.getElementById('sp-bio').value, parentNote:document.getElementById('sp-parent-note').value, phone:JSON.stringify(ps), dob:document.getElementById('sp-dob').value, school:document.getElementById('sp-school').value, medical:document.getElementById('sp-medical').value};
 
-    // Real-time optimistic update
+    showToast("در حال بروزرسانی پروفایل...");
+
+    // Real-time optimistic update to Firebase
     fbDB.ref(`classDB/students/${currentStudent}/info`).update({
-      image: d.image, bio: d.bio, parentNote: d.parentNote, phone: d.phone, dob: d.dob, school: d.school, medical: d.medical
+      image: d.image,
+      bio: d.bio,
+      parentNote: d.parentNote,
+      phone: d.phone,
+      dob: d.dob,
+      school: d.school,
+      medical: d.medical,
+      displayImage: fixUrl(d.image)
     });
 
-    google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); }).updateStudentProfile(d);
+    // Background Backup to Google Sheets
+    google.script.run.withSuccessHandler(r=>{ showToast(r.msg); }).updateStudentProfile(d);
   }
   function addStudent(){
     let n=document.getElementById('new-name').value;
@@ -1097,18 +1107,54 @@
   }
 
   function savePlan() {
-    const idVal=document.getElementById('p-id').value; const dVal=document.getElementById('p-date').value; const tVal=document.getElementById('p-title').value; const sVal=document.getElementById('p-sin').value;
+    let idVal=document.getElementById('p-id').value;
+    const dVal=document.getElementById('p-date').value;
+    const tVal=document.getElementById('p-title').value;
+    const sVal=document.getElementById('p-sin').value;
+
     if(!tVal) return showAlert("عنوان طرح درس اجباری است.");
+
+    if (!idVal || idVal === "undefined" || idVal === "") {
+        idVal = String(Date.now());
+    }
+
     let mods = [];
     document.querySelectorAll('#modules-container > .mod-box-full').forEach(el=>{
       let its = []; el.querySelectorAll('.mat-chip').forEach(c=> its.push({name: c.querySelector('span').innerText.substring(2).trim(), type: c.classList.contains('buy') ? 'buy' : 'have'}));
       mods.push({type: el.querySelector('.m-type').value, name: el.querySelector('.m-name').value, desc: el.querySelector('.m-desc').value, items: its});
     });
-    showLoading();
-    google.script.run.withSuccessHandler(r=>{
+
+    const modulesJson = JSON.stringify(mods);
+    const newPlanObj = {
+      id: idVal,
+      date: dVal,
+      title: tVal,
+      sin: sVal,
+      modules: modulesJson,
+      priority: "low",
+      status: "Active"
+    };
+
+    // Optimistic Update
+    if(!DB.plans) DB.plans = [];
+    const existingIdx = DB.plans.findIndex(p => String(p.id) === String(idVal));
+    if(existingIdx > -1) {
+      DB.plans[existingIdx] = newPlanObj;
+    } else {
+      DB.plans.unshift(newPlanObj);
+    }
+
+    renderPlans();
+    document.getElementById('plan-modal').style.display = 'none';
+    showToast("در حال ذخیره‌سازی...");
+
+    // Firebase Update
+    fbDB.ref('classDB/plans').set(DB.plans);
+
+    // Background GAS Sync
+    google.script.run.withSuccessHandler(r => {
       showToast(r.msg);
-      document.getElementById('plan-modal').style.display='none';
-    }).savePlan(idVal,dVal,tVal,sVal,JSON.stringify(mods));
+    }).savePlan(idVal, dVal, tVal, sVal, modulesJson);
   }
 
   function renderMIChart(d){
