@@ -724,6 +724,12 @@
     fbDB.ref('classDB').on('value', snapshot => {
       const data = snapshot.val();
       if (data) {
+        // Defensive data merging: ensure students object exists and properties are initialized
+        if (!data.students) data.students = {};
+        if (!data.notes) data.notes = [];
+        if (!data.plans) data.plans = [];
+        if (!data.moduleHistory) data.moduleHistory = [];
+
         DB = data;
         hideLoading();
         refreshAllViews();
@@ -739,11 +745,8 @@
 
     // ۲. لیسنر درفت حضور و غیاب (همزمان)
     fbDB.ref('live_attendance_draft').on('value', snapshot => {
-      const draft = snapshot.val();
-      if (draft) {
-        TEMP = draft;
-        if (document.getElementById('view-att').classList.contains('active')) renderAtt();
-      }
+      TEMP = snapshot.val() || {};
+      if (document.getElementById('view-att').classList.contains('active')) renderAtt();
     });
   }
 
@@ -760,13 +763,16 @@
   }
 
   function renderDash(){
-    if(!DB.students) return;
+    const students = DB.students || {};
     document.getElementById('top-student').innerText = DB.topStudent || "---";
-    if(typeof Chart !== 'undefined') {
+
+    if(typeof Chart !== 'undefined' && DB.trend) {
         if(chartInst) chartInst.destroy();
+        const trendLabels = DB.trend.labels || [];
+        const trendData = DB.trend.data || [];
         chartInst = new Chart(document.getElementById('mainChart'), {
           type:'line',
-          data:{labels:DB.trend.labels, datasets:[{label:'حضور %', data:DB.trend.data, borderColor:'#4f46e5', tension:0.35, fill:true, backgroundColor:'rgba(79,70,229,0.1)'}]},
+          data:{labels:trendLabels, datasets:[{label:'حضور %', data:trendData, borderColor:'#4f46e5', tension:0.35, fill:true, backgroundColor:'rgba(79,70,229,0.1)'}]},
           options:{
             responsive: true,
             maintainAspectRatio: false,
@@ -787,14 +793,15 @@
         });
     }
     let h = "";
-    const studentList = Object.values(DB.students || {}).sort((a,b) => b.info.score - a.info.score);
+    const studentList = Object.values(students).sort((a,b) => (b.info?.score || 0) - (a.info?.score || 0));
     studentList.forEach(s => {
+      if (!s.info) return;
       h += `<div class="dash-item" onclick="openProfile('${s.info.name}')">
         <div style="display:flex; align-items:center; gap:12px;"><img src="${s.info.displayImage}" class="avatar-sm"><b>${s.info.name} ${s.info.fire?'🔥':''}</b></div>
-        <span class="score-badge">${toPersianNum(s.info.score)}</span>
+        <span class="score-badge">${toPersianNum(s.info.score || 0)}</span>
       </div>`;
     });
-    document.getElementById('dash-list').innerHTML = h;
+    document.getElementById('dash-list').innerHTML = h || "<p style='text-align:center; padding:20px; opacity:0.5;'>اطلاعی یافت نشد.</p>";
   }
 
   function renderProfiles(){
@@ -810,14 +817,16 @@
 
   function renderAtt(){
     let h = "";
-    const names = Object.keys(DB.students || {}).sort();
+    const students = DB.students || {};
+    const names = Object.keys(students).sort();
     names.forEach(name => {
-      const s = DB.students[name];
+      const s = students[name] || {};
+      const info = s.info || {};
       if(!TEMP[name]) TEMP[name]={s:'Present', m:0};
       let st = TEMP[name].s;
       let bg = st=='Present'?'#dcfce7':(st=='Absent'?'#fee2e2':(st=='Late'?'#fef3c7':'#e0f2fe'));
       h += `<div class="dash-item" style="cursor:default;">
-        <div style="display:flex; align-items:center; gap:12px;"><img src="${s.info.displayImage}" class="avatar-sm"><b>${name}</b></div>
+        <div style="display:flex; align-items:center; gap:12px;"><img src="${info.displayImage || ''}" class="avatar-sm"><b>${name}</b></div>
         <select style="width:110px; background:${bg}; margin:0; font-weight:bold; border-radius:10px;" onchange="chSt('${name}', this)">
           <option value="Present" ${st=='Present'?'selected':''}>حاضر</option>
           <option value="Absent" ${st=='Absent'?'selected':''}>غیبت</option>
@@ -826,13 +835,14 @@
         </select>
       </div>`;
     });
-    document.getElementById('att-list').innerHTML = h;
+    document.getElementById('att-list').innerHTML = h || "<p style='text-align:center; padding:20px; opacity:0.5;'>دانش‌آموزی یافت نشد.</p>";
   }
 
   function renderPlans(){
     let h = "";
-    if (DB.plans && DB.plans.length > 0) {
-      DB.plans.forEach(p=>{
+    const plans = DB.plans || [];
+    if (plans.length > 0) {
+      plans.forEach(p=>{
         let mods = []; try { mods = JSON.parse(p.modules||"[]"); } catch(e) {}
         let mHtml = p.sin?`<div style="white-space:pre-wrap; background:#f1f5f9; padding:12px; border-radius:12px; font-size:0.9rem; margin-bottom:15px; line-height:1.6; border-right:5px solid #cbd5e1;">${p.sin}</div>`:"";
         let mainType = "other";
@@ -852,20 +862,31 @@
     document.getElementById('plans-list').innerHTML = h;
   }
 
-  function renderNotes(){ let h=""; if(DB.notes) DB.notes.forEach(n=> h+=`<div class="note-item"><div class="note-head" onclick="this.parentElement.classList.toggle('open')"><span>📅 ${toPersianNum(n.date)}</span><span>🔽</span></div><div class="note-body">${n.text}</div></div>`); document.getElementById('notes-history').innerHTML=h; }
+  function renderNotes(){
+    let h="";
+    const notes = DB.notes || [];
+    notes.forEach(n=> h+=`<div class="note-item"><div class="note-head" onclick="this.parentElement.classList.toggle('open')"><span>📅 ${toPersianNum(n.date)}</span><span>🔽</span></div><div class="note-body">${n.text}</div></div>`);
+    document.getElementById('notes-history').innerHTML=h || "<p style='text-align:center; padding:20px; opacity:0.5;'>یادداشتی یافت نشد.</p>";
+  }
   function renderScoreList(){
     let h="";
-    const names = Object.keys(DB.students || {}).sort();
+    const students = DB.students || {};
+    const names = Object.keys(students).sort();
     names.forEach(name => {
-      const s = DB.students[name];
-      h += `<div class="dash-item" onclick="manualScore('${name}')"><span>${name}</span><span class="score-badge">دستی: ${toPersianNum(s.info.manualScore)}</span></div>`;
+      const s = students[name] || {};
+      const info = s.info || {};
+      h += `<div class="dash-item" onclick="manualScore('${name}')"><span>${name}</span><span class="score-badge">دستی: ${toPersianNum(info.manualScore || 0)}</span></div>`;
     });
-    document.getElementById('score-list').innerHTML=h;
+    document.getElementById('score-list').innerHTML=h || "<p style='text-align:center; padding:20px; opacity:0.5;'>موردی یافت نشد.</p>";
   }
   function renderSettings(){ if(DB.settings){ document.getElementById('st-token').value=DB.settings.BOT_TOKEN||""; document.getElementById('st-admin').value=DB.settings.ADMIN_CHAT_IDS||""; } }
 
   function renderClassMI(mi) {
-    if(!mi.labels || mi.labels.length === 0) return;
+    const data = mi || { labels: [], averages: [] };
+    if(!data.labels || data.labels.length === 0) {
+      document.getElementById('class-mi-section').style.display = 'none';
+      return;
+    }
     document.getElementById('class-mi-section').style.display = 'block';
     if(classMIChart) classMIChart.destroy();
     classMIChart = new Chart(document.getElementById('classMIChart'), {
@@ -882,26 +903,31 @@
   }
 
   function renderStudentProfileData(n) {
-    const s = DB.students[n];
-    if (!s) return;
-    const i = s.info;
-    document.getElementById('sp-img').src=i.displayImage;
-    document.getElementById('sp-name').innerText = i.name || "";
-    document.getElementById('sp-score').innerText=toPersianNum(i.score)+" امتیاز";
-    document.getElementById('sp-input-img').value=i.image;
+    const s = (DB.students && DB.students[n]) || {};
+    const i = s.info || {};
+    const mi = s.mi || { chart: { labels: [], data: [] }, history: [], traitStates: {} };
+    const stats = s.stats || { history: [], stats: { p: 0, a: 0, l: 0, e: 0, lm: 0 }, scores: { system: 0, manual: 0, total: 0 }, growth: { labels: [], data: [] } };
+
+    document.getElementById('sp-img').src=i.displayImage || '';
+    document.getElementById('sp-name').innerText = i.name || n || "";
+    document.getElementById('sp-score').innerText=toPersianNum(i.score || 0)+" امتیاز";
+    document.getElementById('sp-input-img').value=i.image || "";
     document.getElementById('sp-bio').value=i.bio || "";
     document.getElementById('sp-parent-note').value=i.parentNote || "";
+
     const cont = document.getElementById('phones-container'); cont.innerHTML = "";
     let ps = []; try { ps = JSON.parse(i.phone || "[]"); } catch(e) { if(i.phone) ps.push({label:"تلفن", number:i.phone}); }
     if(ps.length === 0) addPhoneField(); else ps.forEach(p => addPhoneField(p.label, p.number));
+
     document.getElementById('sp-dob').value=i.dob || "";
     document.getElementById('sp-school').value=i.school || "";
     document.getElementById('sp-medical').value=i.medical || "";
-    renderMIChart(s.mi.chart);
-    renderMIAccordion(DB.miConfig, n, s.mi.traitStates);
-    renderFullHistory(s.fullHistory);
-    renderGrowthChart(s.stats.growth);
-    renderSummaryStats(s.stats.stats);
+
+    renderMIChart(mi.chart);
+    renderMIAccordion(DB.miConfig || [], n, mi.traitStates || {});
+    renderFullHistory(s.fullHistory || []);
+    renderGrowthChart(stats.growth);
+    renderSummaryStats(stats.stats);
   }
 
   function addPhoneField(l="", n="") {
@@ -916,21 +942,32 @@
       showPrompt("چند دقیقه تاخیر؟", "15", (m) => {
         if(!m){ e.value='Present'; v='Present'; }
         TEMP[n]={s:v, m:m||0};
+        renderAtt(); // Optimistic local re-render
         fbDB.ref('live_attendance_draft').set(TEMP); // Real-time sync
       });
     } else {
       TEMP[n]={s:v, m:0};
+      renderAtt(); // Optimistic local re-render
       fbDB.ref('live_attendance_draft').set(TEMP); // Real-time sync
     }
   }
 
   function manualScore(n){
     showPrompt(`امتیاز برای ${n}:`, "1", (p) => {
-      if(p) {
-        // Optimistic UI: Firebase update
+      if(p && !isNaN(p)) {
+        const val = Number(p);
+        // Optimistic UI: Local update first
+        if (DB.students && DB.students[n] && DB.students[n].info) {
+          DB.students[n].info.score = (DB.students[n].info.score || 0) + val;
+          DB.students[n].info.manualScore = (DB.students[n].info.manualScore || 0) + val;
+          refreshAllViews();
+          if (currentStudent === n) renderStudentProfileData(n);
+        }
+
+        // Firebase update
         fbDB.ref(`classDB/students/${n}/info`).update({
-          score: (DB.students[n].info.score || 0) + Number(p),
-          manualScore: (DB.students[n].info.manualScore || 0) + Number(p)
+          score: (DB.students[n].info.score || 0),
+          manualScore: (DB.students[n].info.manualScore || 0)
         });
         google.script.run.addManualScore(n,p);
       }
@@ -989,7 +1026,8 @@
   function openPlanModal(){ document.getElementById('p-id').value=""; document.getElementById('modules-container').innerHTML=""; document.getElementById('plan-modal').style.display='flex'; }
 
   function editPlan(id){
-    const p = DB.plans.find(x => x.id == id);
+    const plans = DB.plans || [];
+    const p = plans.find(x => x.id == id);
     if(!p) return showAlert("خطا: طرح درس پیدا نشد.", 'error');
     document.getElementById('p-id').value=p.id;
     document.getElementById('p-date').value=p.date;
@@ -1035,24 +1073,28 @@
   }
 
   function renderMIChart(d){
-    if(typeof Chart === 'undefined') return;
+    if(typeof Chart === 'undefined' || !d) return;
+    const labels = d.labels || [];
+    const data = d.data || [];
     const ctx = document.getElementById('sp-mi-chart');
     if(miChart) miChart.destroy();
     miChart = new Chart(ctx, {
       type:'bar',
-      data:{labels:d.labels, datasets:[{label:'امتیاز هوش', data:d.data, backgroundColor:'#4f46e5', borderRadius: 5}]},
+      data:{labels:labels, datasets:[{label:'امتیاز هوش', data:data, backgroundColor:'#4f46e5', borderRadius: 5}]},
       options:{ indexAxis: 'y', maintainAspectRatio: false, responsive: true, plugins:{legend:{display:false}}, scales:{ x:{beginAtZero:true, grid:{display:false}}, y:{ticks:{autoSkip:false, font:{size:11}}} } }
     });
   }
 
   function renderMIAccordion(conf, name, traitStates){
     let h="";
+    if (!conf || !Array.isArray(conf)) return;
     conf.forEach(c=>{
       let traitHtml = "";
+      const states = traitStates || {};
       const allTraits = (c.pos || []).concat(c.neg || []);
       allTraits.forEach(t => {
         if(!t) return;
-        let currentState = traitStates[c.type + "_" + t] || 0;
+        let currentState = states[c.type + "_" + t] || 0;
         let traitTitle = t; let traitDesc = "";
         if(t.includes(" (")) { const parts = t.split(" ("); traitTitle = parts[0]; traitDesc = parts[1].replace(")", ""); }
         traitHtml += `<div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--border);"><div style="flex:1; padding-left:10px;"><div style="font-size:0.95rem; font-weight:600;">${traitTitle}</div>${traitDesc ? `<div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${traitDesc}</div>` : ""}</div><div style="display:flex; gap:10px;"><button class="btn ${currentState === 1 ? 'btn-green' : 'btn-outline'}" style="width:42px; height:42px; padding:0; border-radius:12px; border-color:#10b981; color:${currentState === 1 ? 'white' : '#10b981'}; background:${currentState === 1 ? '#10b981' : 'transparent'}" onclick="logMI('${name}','${c.type}','${t}', ${currentState === 1 ? 0 : 1})"><i class="fas fa-check"></i></button><button class="btn ${currentState === -1 ? 'btn-red' : 'btn-outline'}" style="width:42px; height:42px; padding:0; border-radius:12px; border-color:#ef4444; color:${currentState === -1 ? 'white' : '#ef4444'}; background:${currentState === -1 ? '#ef4444' : 'transparent'}" onclick="logMI('${name}','${c.type}','${t}', ${currentState === -1 ? 0 : -1})"><i class="fas fa-times"></i></button></div></div>`;
@@ -1063,14 +1105,22 @@
   }
 
   function logMI(n,t,b,s){
-    // Optimistic Update
+    // Optimistic Local Update
+    if (DB.students && DB.students[n] && DB.students[n].mi) {
+      if (!DB.students[n].mi.traitStates) DB.students[n].mi.traitStates = {};
+      DB.students[n].mi.traitStates[t + "_" + b] = s;
+      renderStudentProfileData(n);
+    }
+
+    // Firebase Update
     fbDB.ref(`classDB/students/${n}/mi/traitStates`).update({ [t + "_" + b]: s });
     google.script.run.withSuccessHandler(()=>{ showToast("بروزرسانی شد"); }).submitMILog(n,t,b,s);
   }
 
   function renderFullHistory(h){
-    if(!h || h.length === 0) { document.getElementById('sp-mi-history').innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;"><i class="fas fa-history" style="font-size:2rem; display:block; margin-bottom:10px; opacity:0.3;"></i>هنوز فعالیتی ثبت نشده است.</div>`; return; }
-    document.getElementById('sp-mi-history').innerHTML = h.map(x=>{
+    const history = h || [];
+    if(history.length === 0) { document.getElementById('sp-mi-history').innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8;"><i class="fas fa-history" style="font-size:2rem; display:block; margin-bottom:10px; opacity:0.3;"></i>هنوز فعالیتی ثبت نشده است.</div>`; return; }
+    document.getElementById('sp-mi-history').innerHTML = history.map(x=>{
       let badge = x.score ? `<b style="color:${x.score>0?'#10b981':'#ef4444'};">${x.score>0?'+':''}${toPersianNum(x.score)}</b>` : "";
       return `<div style="font-size:0.88rem; border-bottom:1px solid var(--border); padding:12px; display:flex; justify-content:space-between; align-items:center;">
         <div style="display:flex; align-items:center; gap:12px;"><span style="font-size:1.2rem;">${x.icon}</span><div><small style="opacity:0.6;">${toPersianNum(x.date)} - ${x.title}</small><br><b style="color:var(--text);">${x.desc}</b></div></div>${badge}</div>`;
@@ -1078,22 +1128,23 @@
   }
 
   function renderSummaryStats(s) {
+    const stats = s || { p: 0, l: 0, lm: 0, a: 0, e: 0 };
     const h = `
       <div style="text-align:center; padding:10px; background:#f0fdf4; border-radius:12px; border:1px solid #bbf7d0;">
         <small style="color:#15803d; display:block;">حضور به‌موقع</small>
-        <b style="font-size:1.2rem;">${toPersianNum(s.p)}</b>
+        <b style="font-size:1.2rem;">${toPersianNum(stats.p)}</b>
       </div>
       <div style="text-align:center; padding:10px; background:#fffbeb; border-radius:12px; border:1px solid #fef3c7;">
         <small style="color:#b45309; display:block;">حضور با تاخیر</small>
-        <b style="font-size:1.2rem;">${toPersianNum(s.l)} <small>(${toPersianNum(s.lm)} د)</small></b>
+        <b style="font-size:1.2rem;">${toPersianNum(stats.l)} <small>(${toPersianNum(stats.lm)} د)</small></b>
       </div>
       <div style="text-align:center; padding:10px; background:#fef2f2; border-radius:12px; border:1px solid #fecaca;">
         <small style="color:#b91c1c; display:block;">غیبت</small>
-        <b style="font-size:1.2rem;">${toPersianNum(s.a)}</b>
+        <b style="font-size:1.2rem;">${toPersianNum(stats.a)}</b>
       </div>
       <div style="text-align:center; padding:10px; background:#f0f9ff; border-radius:12px; border:1px solid #bae6fd;">
         <small style="color:#0369a1; display:block;">غیبت موجه</small>
-        <b style="font-size:1.2rem;">${toPersianNum(s.e)}</b>
+        <b style="font-size:1.2rem;">${toPersianNum(stats.e)}</b>
       </div>
     `;
     document.getElementById('sp-summary-stats').innerHTML = h;
@@ -1109,17 +1160,17 @@
   }
 
   function openReportCard() {
-    if(!currentStudent) return;
-    showLoading();
-    google.script.run.withSuccessHandler(d=>{
-      hideLoading();
-      if(!d.success) return showAlert("خطا در دریافت اطلاعات", 'error');
-      const info = d.info; const stats = d.stats; const today = new Date().toLocaleDateString('fa-IR');
-      document.getElementById('report-date').innerText = `تاریخ صدور: ${toPersianNum(today)}`;
-      let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores.total)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حضور به‌موقع:</span> <b>${toPersianNum(stats.stats.p)} جلسه</b></div><div class="report-stat-row"><span>⏰ حضور با تاخیر:</span> <b>${toPersianNum(stats.stats.l)} جلسه (${toPersianNum(stats.stats.lm)} دقیقه)</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats.a)} جلسه</b></div><div class="report-stat-row"><span>🏳️ غیبت موجه:</span> <b>${toPersianNum(stats.stats.e)} جلسه</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(d.mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
-      document.getElementById('report-content').innerHTML = h;
-      document.getElementById('report-modal').style.display = 'block';
-    }).getFullStudentProfile(currentStudent);
+    if(!currentStudent || !DB.students || !DB.students[currentStudent]) return;
+    const s = DB.students[currentStudent];
+    const info = s.info || {};
+    const stats = s.stats || { stats: { p: 0, a: 0, l: 0, e: 0, lm: 0 }, scores: { total: 0 } };
+    const mi = s.mi || { chart: { labels: [], data: [] } };
+    const today = new Date().toLocaleDateString('fa-IR');
+
+    document.getElementById('report-date').innerText = `تاریخ صدور: ${toPersianNum(today)}`;
+    let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage || ''}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name || currentStudent}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores?.total || 0)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حضور به‌موقع:</span> <b>${toPersianNum(stats.stats?.p || 0)} جلسه</b></div><div class="report-stat-row"><span>⏰ حضور با تاخیر:</span> <b>${toPersianNum(stats.stats?.l || 0)} جلسه (${toPersianNum(stats.stats?.lm || 0)} دقیقه)</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats?.a || 0)} جلسه</b></div><div class="report-stat-row"><span>🏳️ غیبت موجه:</span> <b>${toPersianNum(stats.stats?.e || 0)} جلسه</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
+    document.getElementById('report-content').innerHTML = h;
+    document.getElementById('report-modal').style.display = 'block';
   }
 
   function generateSimpleBarChart(chartData) {
@@ -1153,10 +1204,12 @@
   }
   function renderGroupStudentGrid() {
     let h = "";
-    const names = Object.keys(DB.students).sort();
+    const students = DB.students || {};
+    const names = Object.keys(students).sort();
     names.forEach(name => {
-      const s = DB.students[name];
-      h += `<div class="student-select-card" onclick="toggleStudentSelection(this, '${name}')"><img src="${s.info.displayImage}"><span>${name}</span><i class="fas fa-check-circle"></i></div>`;
+      const s = students[name] || {};
+      const info = s.info || {};
+      h += `<div class="student-select-card" onclick="toggleStudentSelection(this, '${name}')"><img src="${info.displayImage || ''}"><span>${name}</span><i class="fas fa-check-circle"></i></div>`;
     });
     document.getElementById('g-students-list').innerHTML = h;
   }
@@ -1168,8 +1221,8 @@
   function openFreeActivity() { document.getElementById('fa-date').value = new Date().toLocaleDateString('fa-IR'); document.getElementById('free-activity-modal').style.display='flex'; }
   function saveFreeActivityLog() { const d = document.getElementById('fa-date').value; const t = document.getElementById('fa-title').value; const desc = document.getElementById('fa-desc').value; if(!t) return showAlert("عنوان الزامی است"); showLoading(); google.script.run.withSuccessHandler(r=>{ hideLoading(); showToast(r.msg); document.getElementById('free-activity-modal').style.display='none'; document.getElementById('fa-title').value = ""; document.getElementById('fa-desc').value = ""; }).saveManualLog({date: d, type: 'free_activity', title: t, details: desc}); }
   let currentArchiveType = 'grouping';
-  function filterArchive(query) { const list = document.getElementById('archive-list'); let h = ""; if(!query || query.trim() === "") { renderArchive(currentArchiveType); return; } const allItems = DB.moduleHistory || []; const filtered = allItems.filter(item => { let searchStr = (item.title + " " + item.date + " " + (item.details || "")).toLowerCase(); return searchStr.includes(query.toLowerCase()); }); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">موردی یافت نشد.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
-  function renderArchive(type, tabElement) { if(tabElement) { document.querySelectorAll('#view-archive .tab').forEach(t => t.classList.remove('active')); tabElement.classList.add('active'); } currentArchiveType = type; document.getElementById('archive-search').value = ""; const list = document.getElementById('archive-list'); let h = ""; const filtered = (DB.moduleHistory || []).filter(item => item.type === type); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">هنوز موردی در این دسته ثبت نشده است.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
+  function filterArchive(query) { const list = document.getElementById('archive-list'); let h = ""; if(!query || query.trim() === "") { renderArchive(currentArchiveType); return; } const allItems = DB.moduleHistory || []; const filtered = allItems.filter(item => { if(!item) return false; let searchStr = (String(item.title || "") + " " + String(item.date || "") + " " + (item.details || "")).toLowerCase(); return searchStr.includes(query.toLowerCase()); }); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">موردی یافت نشد.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
+  function renderArchive(type, tabElement) { if(tabElement) { document.querySelectorAll('#view-archive .tab').forEach(t => t.classList.remove('active')); tabElement.classList.add('active'); } currentArchiveType = type; document.getElementById('archive-search').value = ""; const list = document.getElementById('archive-list'); let h = ""; const filtered = (DB.moduleHistory || []).filter(item => item && item.type === type); if (filtered.length === 0) { h = `<div style="text-align:center; padding:20px; color:#94a3b8;">هنوز موردی در این دسته ثبت نشده است.</div>`; } else { filtered.forEach(item => h += buildArchiveItemHTML(item)); } list.innerHTML = h; }
   function buildArchiveItemHTML(item) { let headerText = item.title; let bodyContent = ""; let extraBtn = ""; if (item.source === 'plan' && item.planId) { extraBtn = `<br><button class="btn btn-blue" style="font-size:0.8rem; padding:5px 10px; margin-top:10px; width:auto; display:inline-block;" onclick="goToPlan('${item.planId}')">📜 مشاهده طرح درس</button>`; } if (item.type === 'grouping') { let detailsObj = {}; try { detailsObj = JSON.parse(item.details); } catch(e){} if(detailsObj.isMultiGroup) { let groupsHtml = ""; (detailsObj.groups || []).forEach(g => { groupsHtml += `<div style="margin-bottom:8px; border-bottom:1px dashed #eee; padding-bottom:5px;"><span style="font-weight:bold; color:var(--primary);">${g.name}:</span> ${g.members.join('، ')}</div>`; }); bodyContent = groupsHtml; } else { const membersStr = (detailsObj.members || []).join(' - '); const grpName = detailsObj.groupName || ""; if(grpName) headerText += ` <span style="opacity:0.7">(${grpName})</span>`; bodyContent = `<b>اعضا:</b> ${membersStr}`; } } else { const sourceBadge = item.source==='plan' ? '<span style="color:var(--primary);">📚 طرح درس</span>' : '<span style="color:#10b981;">📝 آزاد</span>'; bodyContent = `${item.details || 'بدون توضیحات'}<br><br><small>${sourceBadge}</small>`; } return `<div class="acc-card"><div class="acc-header" onclick="this.parentElement.classList.toggle('open')"><div>${headerText}</div><div style="font-size:0.8rem; white-space:nowrap;">${toPersianNum(item.date)} 🔽</div></div><div class="acc-body">${bodyContent}${extraBtn}</div></div>`; }
   function goToPlan(planId) { nav('plans'); setTimeout(() => { const el = document.getElementById('plan-' + planId); if(el) { el.scrollIntoView({behavior: 'smooth', block: 'center'}); el.classList.add('open'); el.classList.add('highlight'); setTimeout(() => el.classList.remove('highlight'), 2000); } else { showAlert("طرح درس مورد نظر یافت نشد.", 'error'); } }, 600); }
 </script>
