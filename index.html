@@ -205,12 +205,38 @@
 
     @media print {
       body { background: white !important; padding: 0 !important; margin: 0 !important; }
-      .header, .bottom-nav, .sidebar, .sidebar-overlay, .fab, .container, .modal, #confirm-modal, #lightbox, #prompt-modal { display: none !important; }
-      #report-modal { display: block !important; position: static !important; background: white !important; padding: 0 !important; margin: 0 !important; visibility: visible !important; }
-      .modal-box.report-card-modal { box-shadow: none !important; width: 100% !important; max-width: none !important; height: auto !important; margin: 0 !important; padding: 0 !important; border-radius: 0 !important; }
-      .report-body { max-height: none !important; overflow: visible !important; padding: 30px !important; }
-      #report-modal .btn { display: none !important; }
-      .report-header { padding: 30px !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .header, .bottom-nav, .sidebar, .sidebar-overlay, .fab, .container, .modal, #confirm-modal, #lightbox, #prompt-modal, .toast-container { display: none !important; }
+      #report-modal {
+        display: block !important;
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        background: white !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        visibility: visible !important;
+        z-index: 9999 !important;
+        backdrop-filter: none !important;
+      }
+      .modal-box.report-card-modal {
+        box-shadow: none !important;
+        width: 100% !important;
+        max-width: none !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      .report-body { max-height: none !important; overflow: visible !important; padding: 40px !important; }
+      #report-modal .btn, #report-modal button { display: none !important; }
+      .report-header { padding: 40px !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .report-stat-row { background: #f8fafc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      div[style*="background"] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .score-badge { border: 1px solid var(--primary) !important; color: var(--primary) !important; }
     }
   </style>
 </head>
@@ -905,8 +931,21 @@
   function renderStudentProfileData(n) {
     const s = (DB.students && DB.students[n]) || {};
     const i = s.info || {};
-    const mi = s.mi || { chart: { labels: [], data: [] }, history: [], traitStates: {} };
     const stats = s.stats || { history: [], stats: { p: 0, a: 0, l: 0, e: 0, lm: 0 }, scores: { system: 0, manual: 0, total: 0 }, growth: { labels: [], data: [] } };
+
+    // Calculate Live MI Scores for Chart and Summary (Real-Time UI)
+    const miConfig = DB.miConfig || [];
+    const traitStates = (s.mi && s.mi.traitStates) || {};
+    const liveMILabels = [];
+    const liveMIData = [];
+
+    miConfig.forEach(conf => {
+      liveMILabels.push(conf.type);
+      let score = 0;
+      if (conf.pos) conf.pos.forEach(p => score += (traitStates[conf.type + "_" + p] || 0));
+      if (conf.neg) conf.neg.forEach(neg => score += (traitStates[conf.type + "_" + neg] || 0));
+      liveMIData.push(Math.max(0, score));
+    });
 
     document.getElementById('sp-img').src=i.displayImage || '';
     document.getElementById('sp-name').innerText = i.name || n || "";
@@ -923,8 +962,8 @@
     document.getElementById('sp-school').value=i.school || "";
     document.getElementById('sp-medical').value=i.medical || "";
 
-    renderMIChart(mi.chart);
-    renderMIAccordion(DB.miConfig || [], n, mi.traitStates || {});
+    renderMIChart({ labels: liveMILabels, data: liveMIData });
+    renderMIAccordion(miConfig, n, traitStates);
     renderFullHistory(s.fullHistory || []);
     renderGrowthChart(stats.growth);
     renderSummaryStats(stats.stats);
@@ -1164,23 +1203,91 @@
     const s = DB.students[currentStudent];
     const info = s.info || {};
     const stats = s.stats || { stats: { p: 0, a: 0, l: 0, e: 0, lm: 0 }, scores: { total: 0 } };
-    const mi = s.mi || { chart: { labels: [], data: [] } };
+
+    // Live MI calculation for accurate report card
+    const miConfig = DB.miConfig || [];
+    const traitStates = (s.mi && s.mi.traitStates) || {};
+    const liveLabels = []; const liveData = [];
+    miConfig.forEach(conf => {
+      liveLabels.push(conf.type);
+      let score = 0;
+      if (conf.pos) conf.pos.forEach(p => score += (traitStates[conf.type + "_" + p] || 0));
+      if (conf.neg) conf.neg.forEach(neg => score += (traitStates[conf.type + "_" + neg] || 0));
+      liveData.push(Math.max(0, score));
+    });
+
     const today = new Date().toLocaleDateString('fa-IR');
 
     document.getElementById('report-date').innerText = `تاریخ صدور: ${toPersianNum(today)}`;
-    let h = `<div style="text-align:center; margin-bottom:20px;"><img src="${info.displayImage || ''}" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary);"><h3 style="margin:10px 0;">${info.name || currentStudent}</h3><span class="score-badge" style="font-size:1rem;">امتیاز کل: ${toPersianNum(stats.scores?.total || 0)}</span></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📊 وضعیت حضور و غیاب</h4><div class="report-stat-row"><span>✅ حضور به‌موقع:</span> <b>${toPersianNum(stats.stats?.p || 0)} جلسه</b></div><div class="report-stat-row"><span>⏰ حضور با تاخیر:</span> <b>${toPersianNum(stats.stats?.l || 0)} جلسه (${toPersianNum(stats.stats?.lm || 0)} دقیقه)</b></div><div class="report-stat-row"><span>❌ غیبت:</span> <b>${toPersianNum(stats.stats?.a || 0)} جلسه</b></div><div class="report-stat-row"><span>🏳️ غیبت موجه:</span> <b>${toPersianNum(stats.stats?.e || 0)} جلسه</b></div></div><div class="report-section"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">🧠 پروفایل هوش برتر</h4><p style="font-size:0.9rem; color:#666;">بر اساس مشاهدات ثبت شده در کلاس:</p>${generateSimpleBarChart(mi.chart)}</div><div class="report-section" style="border:none;"><h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:5px;">📝 یادداشت مربی برای والدین</h4><div style="background:#f9fafb; padding:10px; border-radius:8px; border:1px dashed #ccc; min-height:60px;">${info.parentNote || "توضیحات خاصی ثبت نشده است."}</div></div>`;
+
+    let h = `
+      <div style="text-align:center; margin-bottom:20px;">
+        <img src="${info.displayImage || ''}" style="width:100px; height:100px; border-radius:50%; object-fit:cover; border:4px solid var(--primary);">
+        <h2 style="margin:15px 0 5px;">${info.name || currentStudent}</h2>
+        <div style="display:flex; justify-content:center; gap:15px; margin-bottom:10px; font-size:0.9rem; color:#666;">
+           ${info.school ? `<span>🏫 مدرسه: ${info.school}</span>` : ""}
+           ${info.dob ? `<span>🎂 تولد: ${toPersianNum(info.dob)}</span>` : ""}
+        </div>
+        <span class="score-badge" style="font-size:1.1rem; padding:8px 20px;">امتیاز نهایی: ${toPersianNum(stats.scores?.total || 0)}</span>
+      </div>
+
+      <div class="report-section">
+        <h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:8px; margin-top:0;">📊 وضعیت انضباطی و حضور</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div class="report-stat-row"><span>✅ حضور به‌موقع:</span> <b>${toPersianNum(stats.stats?.p || 0)} جلسه</b></div>
+          <div class="report-stat-row"><span>⏰ حضور با تاخیر:</span> <b>${toPersianNum(stats.stats?.l || 0)} جلسه</b></div>
+          <div class="report-stat-row"><span>❌ غیبت غیرموجه:</span> <b>${toPersianNum(stats.stats?.a || 0)} جلسه</b></div>
+          <div class="report-stat-row"><span>🏳️ غیبت موجه:</span> <b>${toPersianNum(stats.stats?.e || 0)} جلسه</b></div>
+          <div class="report-stat-row" style="grid-column: span 2; background:#f8fafc; padding:8px; border-radius:8px;">
+            <span>⏱ مجموع دقایق تاخیر:</span> <b>${toPersianNum(stats.stats?.lm || 0)} دقیقه</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="report-section">
+        <h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:8px;">🧠 تحلیل هوش‌های چندگانه (MI)</h4>
+        <p style="font-size:0.85rem; color:#64748b; margin-bottom:15px;">رتبه و سطح توانمندی در حوزه‌های مختلف بر اساس مشاهدات مربی:</p>
+        ${generateSimpleBarChart({ labels: liveLabels, data: liveData })}
+      </div>
+
+      ${info.medical ? `
+      <div class="report-section">
+        <h4 style="color:#ef4444; border-bottom:2px solid #fee2e2; padding-bottom:8px;">⚠️ ملاحظات خاص/پزشکی</h4>
+        <div style="font-size:0.95rem; color:#334155;">${info.medical}</div>
+      </div>` : ""}
+
+      ${info.bio ? `
+      <div class="report-section">
+        <h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:8px;">👤 بیوگرافی و سوابق</h4>
+        <div style="font-size:0.95rem; color:#334155; line-height:1.6;">${info.bio}</div>
+      </div>` : ""}
+
+      <div class="report-section" style="border:none;">
+        <h4 style="color:var(--primary); border-bottom:2px solid #eee; padding-bottom:8px;">📝 دیدگاه مربی و بازخورد والدین</h4>
+        <div style="background:#f1f5f9; padding:15px; border-radius:12px; border-right:5px solid var(--primary); min-height:80px; font-size:1rem; line-height:1.7;">
+          ${info.parentNote || "توضیحات تکمیلی برای این دوره ثبت نشده است."}
+        </div>
+      </div>
+    `;
     document.getElementById('report-content').innerHTML = h;
     document.getElementById('report-modal').style.display = 'block';
   }
 
   function generateSimpleBarChart(chartData) {
-    if(!chartData || !chartData.labels) return "";
-    let html = '<div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">';
-    let dataMap = chartData.labels.map((l, i) => ({label: l, value: chartData.data[i]}));
+    if(!chartData || !chartData.labels || chartData.labels.length === 0) return "<p style='opacity:0.5; font-size:0.8rem;'>داده‌ای برای نمایش وجود ندارد.</p>";
+    let html = '<div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">';
+    let dataMap = chartData.labels.map((l, i) => ({label: l, value: chartData.data[i] || 0}));
     dataMap.sort((a,b) => b.value - a.value);
     dataMap.forEach(item => {
-      let pct = Math.min(100, (item.value / 10) * 100);
-      html += `<div style="display:flex; align-items:center; font-size:0.85rem;"><span style="width:100px;">${item.label}</span><div style="flex:1; background:#eee; height:10px; border-radius:5px; overflow:hidden;"><div style="width:${pct}%; background:var(--primary); height:100%;"></div></div><span style="width:30px; text-align:left; margin-right:5px;">${toPersianNum(item.value)}</span></div>`;
+      let pct = Math.min(100, Math.max(2, (item.value / 10) * 100)); // Min 2% for visibility
+      html += `
+        <div style="display:flex; align-items:center; font-size:0.9rem;">
+          <span style="width:110px; font-weight:500;">${item.label}</span>
+          <div style="flex:1; background:#e2e8f0; height:12px; border-radius:6px; overflow:hidden; margin:0 10px;">
+            <div style="width:${pct}%; background:linear-gradient(to left, var(--primary), #818cf8); height:100%; border-radius:6px;"></div>
+          </div>
+          <span style="width:35px; text-align:left; font-weight:bold; color:var(--primary);">${toPersianNum(item.value)}</span>
+        </div>`;
     });
     html += '</div>'; return html;
   }
