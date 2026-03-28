@@ -1,4 +1,9 @@
 // --- تنظیمات و ساختار دیتابیس ---
+const FB_CONFIG = {
+  URL: "https://sitejalasecharshanbe-c5a64-default-rtdb.firebaseio.com",
+  SECRET: "7L2yuiSMah90NRXlCqY2CIajTeheyzP7vQWTTolh"
+};
+
 const CONFIG = {
   SHEETS: {
     PEOPLE: "افراد",
@@ -15,7 +20,7 @@ const CONFIG = {
 };
 
 const SHEET_STRUCTURE = {
-  "افراد": ["نام", "غیبت", "تاخیر", "امتیاز", "وضعیت", "عکس", "امتیاز_دستی", "بیوگرافی", "تلفن_متربی", "تلفن_والدین", "تولد", "مدرسه", "پزشکی", "یادداشت_والدین"],
+  "افراد": ["نام", "غیبت", "تاخیر", "امتیاز", "وضعیت", "عکس", "امتیاز_دستی", "بیوگرافی", "تلفن_متربی", "تلفن_والدین", "تولد", "مدرسه", "پزشکی", "یادداشت_والدین", "مجموع_دقایق_تاخیر"],
   "حضور و غیاب": ["نام"],
   "تنظیمات": ["کلید", "مقدار", "توضیحات"],
   "یادداشت_جلسات": ["تاریخ", "یادداشت"],
@@ -37,43 +42,194 @@ function doGet(e) {
 }
 
 function getAppData() {
+  return getComprehensiveAppData();
+}
+
+/**
+ * این تابع تمام اطلاعات سیستم را در یک ساختار JSON واحد جمع‌آوری می‌کند
+ * برای سینک با فایربیس و استفاده در کلاینت بدون تاخیر
+ */
+function getComprehensiveAppData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   checkSheets(ss);
   updateCalculations(ss);
 
+  const students = {};
   const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
-  // اگر شیت افراد نبود، بازگشت ساختار خالی
-  if (!shP) return { students: [], trend: {labels:[], data:[]}, notes: [], plans: [], settings: {}, moduleHistory: [] };
+  if (!shP) return { students: {} };
 
   const pData = shP.getDataRange().getValues();
-  let students = [];
-  if (pData.length > 1) {
-    for (let i = 1; i < pData.length; i++) {
-      if (pData[i][0]) {
-        students.push({
-          name: String(pData[i][0]),
-          score: Number(pData[i][3]) || 0,
-          manualScore: Number(pData[i][6]) || 0,
-          image: fixUrl(pData[i][5]),
-          fire: (Number(pData[i][1]) === 0 && Number(pData[i][2]) === 0)
-        });
+
+  // دریافت اطلاعات عمومی یکبار برای کل کلاس
+  const notes = getNotesList(ss);
+  const plans = getPlans(ss);
+  const settings = getSystemSettings(ss);
+  const moduleHistory = getCombinedHistory(ss);
+  const trend = getTrendData(ss);
+  const classMIData = getClassMIData();
+
+  // دریافت لاگ‌های هوش یکبار برای پردازش
+  const shLogs = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
+  const shConf = ss.getSheetByName(CONFIG.SHEETS.MI_CONFIG);
+  const miLogs = shLogs ? shLogs.getDataRange().getValues() : [];
+  const miConfRaw = shConf ? shConf.getDataRange().getValues() : [];
+  const miConf = [];
+  for(let i=1; i<miConfRaw.length; i++) {
+    miConf.push({
+      type: miConfRaw[i][0],
+      desc: miConfRaw[i][1],
+      pos: miConfRaw[i][2] ? String(miConfRaw[i][2]).split(',') : [],
+      neg: miConfRaw[i][3] ? String(miConfRaw[i][3]).split(',') : []
+    });
+  }
+
+  // دریافت اطلاعات حضور و غیاب
+  const shA = ss.getSheetByName(CONFIG.SHEETS.ATT);
+  const attData = shA ? shA.getDataRange().getValues() : [];
+
+  for (let i = 1; i < pData.length; i++) {
+    const name = String(pData[i][0]);
+    if (!name) continue;
+
+    // ۱. اطلاعات پایه
+    const info = {
+      name: name,
+      absent: Number(pData[i][1]) || 0,
+      late: Number(pData[i][2]) || 0,
+      score: Number(pData[i][3]) || 0,
+      image: pData[i][5] || "",
+      displayImage: fixUrl(pData[i][5]),
+      manualScore: Number(pData[i][6]) || 0,
+      bio: pData[i][7] ? String(pData[i][7]) : "",
+      phone: pData[i][8] ? String(pData[i][8]) : "[]",
+      dob: pData[i][10] ? String(pData[i][10]) : "",
+      school: pData[i][11] ? String(pData[i][11]) : "",
+      medical: pData[i][12] ? String(pData[i][12]) : "",
+      parentNote: pData[i][13] ? String(pData[i][13]) : "",
+      totalDelayMins: Number(pData[i][14]) || 0,
+      fire: (Number(pData[i][1]) === 0)
+    };
+
+    // ۲. پروفایل هوش برای این فرد
+    const traitStates = {};
+    const miHistory = [];
+    if (miLogs.length > 0) {
+      for(let j=1; j<miLogs.length; j++) {
+        if(String(miLogs[j][1]) === name) {
+          let type = miLogs[j][2];
+          let behavior = miLogs[j][3];
+          let score = Number(miLogs[j][4]);
+          traitStates[type + "_" + behavior] = score;
+          miHistory.push({ date: new Date(miLogs[j][0]).toLocaleDateString('fa-IR'), type, behavior, score });
+        }
       }
     }
-  }
-  // مرتب‌سازی دانش‌آموزان بر اساس امتیاز (بیشترین بالا)
-  students.sort((a, b) => b.score - a.score);
 
-  const plans = getPlans(ss);
+    const miScores = {};
+    miConf.forEach(c => {
+      miScores[c.type] = 0;
+      c.pos.forEach(p => miScores[c.type] += (traitStates[c.type + "_" + p] || 0));
+      c.neg.forEach(n => miScores[c.type] += (traitStates[c.type + "_" + n] || 0));
+    });
+
+    const studentMI = {
+      chart: { labels: miConf.map(c => c.type), data: miConf.map(c => Math.max(0, miScores[c.type])) },
+      history: miHistory.reverse().slice(0, 20),
+      traitStates: traitStates
+    };
+
+    // ۳. آمار و تاریخچه حضور
+    let ri = -1;
+    for (let k = 1; k < attData.length; k++) if (String(attData[k][0]) === name) { ri = k; break; }
+
+    const h = [], s = { p: 0, a: 0, l: 0, e: 0, lm: 0 }, gl = [], gd = [];
+    let sys = 0;
+    if (ri > -1) {
+      const he = attData[0];
+      for (let c = 1; c < he.length; c++) {
+        let v = String(attData[ri][c]), da = (he[c] instanceof Date) ? he[c].toLocaleDateString('fa-IR') : String(he[c]);
+        if (v && v != "") {
+          if (v.includes("حاضر")) { sys++; s.p++ }
+          else if (v.includes("غیبت")) { sys--; s.a++ }
+          else if (v.includes("تاخیر")) {
+            sys++; s.l++;
+            let minsMatch = v.match(/\(([^)]+)\)/);
+            if (minsMatch) {
+              let minsStr = minsMatch[1].replace(/[^0-9۰-۹]/g, '');
+              s.lm += parseInt(toEnglishDigits(minsStr)) || 0;
+            }
+          }
+          else if (v.includes("موجه")) { s.e++ }
+          gl.push(normalizeDateStr(da));
+          gd.push(sys + info.manualScore);
+        }
+      }
+      for (let c = he.length - 1; c >= 1; c--) {
+        let v = String(attData[ri][c]), da = (he[c] instanceof Date) ? he[c].toLocaleDateString('fa-IR') : String(he[c]);
+        if (v != "") h.push({ date: normalizeDateStr(da), status: v });
+      }
+    }
+
+    // ۴. تاریخچه جامع
+    const fullHistory = [];
+    miHistory.forEach(mh => {
+      let statusText = mh.score === 1 ? "✅ مثبت" : (mh.score === -1 ? "❌ منفی" : "⚪ خنثی");
+      fullHistory.push({ date: normalizeDateStr(mh.date), type: 'mi', title: mh.type, desc: mh.behavior + " (" + statusText + ")", score: mh.score, icon: '🧠' });
+    });
+    h.forEach(att => fullHistory.push({ date: att.date, type: 'att', title: 'حضور و غیاب', desc: att.status, icon: att.status.includes('حاضر')?'✅':(att.status.includes('غیبت')?'❌':'⏰') }));
+
+    const attDates = h.map(x => x.date);
+    moduleHistory.forEach(act => {
+      if(attDates.includes(act.date)) fullHistory.push({ date: act.date, type: 'activity', title: act.title, desc: act.type === 'grouping' ? 'شرکت در گروه‌بندی' : (act.details || 'شرکت در فعالیت کلاسی'), icon: '🎯' });
+    });
+    fullHistory.sort((a, b) => b.date.localeCompare(a.date));
+
+    students[name] = {
+      info: info,
+      mi: studentMI,
+      stats: { history: h, stats: s, scores: { system: sys, manual: info.manualScore, total: sys + info.manualScore }, growth: { labels: gl, data: gd } },
+      fullHistory: fullHistory
+    };
+  }
+
+  const sortedStudentList = Object.values(students).sort((a, b) => b.info.score - a.info.score);
+  const maxScore = sortedStudentList.length > 0 ? sortedStudentList[0].info.score : -1;
+  const topStudents = sortedStudentList.filter(s => s.info.score === maxScore && maxScore > 0).map(s => s.info.name).join(" - ");
 
   return {
     students: students,
-    trend: getTrendData(ss),
-    topStudent: students.length > 0 ? students[0].name : "---",
-    notes: getNotesList(ss),
+    trend: trend,
+    topStudent: topStudents || "---",
+    notes: notes,
     plans: plans,
-    settings: getSystemSettings(ss),
-    moduleHistory: getCombinedHistory(ss)
+    settings: settings,
+    moduleHistory: moduleHistory,
+    classMI: classMIData,
+    miConfig: miConf
   };
+}
+
+/**
+ * همگام‌سازی اطلاعات شیت با فایربیس (REST API)
+ */
+function syncSheetToFirebase() {
+  if (FB_CONFIG.URL.includes("[YOUR_")) return {success: false, msg: "تنظیمات فایربیس انجام نشده است"};
+
+  const data = getComprehensiveAppData();
+  const url = `${FB_CONFIG.URL}/classDB.json?auth=${FB_CONFIG.SECRET}`;
+  const options = {
+    method: 'put',
+    contentType: 'application/json',
+    payload: JSON.stringify(data)
+  };
+
+  try {
+    UrlFetchApp.fetch(url, options);
+    return { success: true, msg: "Firebase Synced 🔄" };
+  } catch (e) {
+    Logger.log("Sync Error: " + e.message);
+    return { success: false, msg: e.message };
+  }
 }
 
 function getFullStudentProfile(studentName) {
@@ -122,11 +278,12 @@ function getComprehensiveStudentHistory(ss, studentName) {
   // 1. MI Logs
   const miProfile = getStudentMIProfile(studentName);
   miProfile.history.forEach(h => {
+    let statusText = h.score === 1 ? "✅ مثبت" : (h.score === -1 ? "❌ منفی" : "⚪ خنثی");
     combined.push({
-      date: h.date,
+      date: normalizeDateStr(h.date),
       type: 'mi',
       title: h.type,
-      desc: h.behavior,
+      desc: h.behavior + " (" + statusText + ")",
       score: h.score,
       icon: '🧠'
     });
@@ -141,7 +298,7 @@ function getComprehensiveStudentHistory(ss, studentName) {
     else if(h.status.includes('تاخیر')) icon = '⏰';
 
     combined.push({
-      date: h.date,
+      date: normalizeDateStr(h.date),
       type: 'att',
       title: 'حضور و غیاب',
       desc: h.status,
@@ -151,12 +308,13 @@ function getComprehensiveStudentHistory(ss, studentName) {
 
   // 3. General Activities (if present on that day)
   const allActivities = getCombinedHistory(ss);
-  const attDates = details.history.filter(h => h.status.includes('حاضر') || h.status.includes('تاخیر')).map(h => normalizeDateStr(h.date));
+  const attDates = details.history.map(h => normalizeDateStr(h.date));
 
   allActivities.forEach(act => {
-    if(attDates.includes(normalizeDateStr(act.date))) {
+    let normDate = normalizeDateStr(act.date);
+    if(attDates.includes(normDate)) {
       combined.push({
-        date: act.date,
+        date: normDate,
         type: 'activity',
         title: act.title,
         desc: act.type === 'grouping' ? 'شرکت در گروه‌بندی' : (act.details || 'شرکت در فعالیت کلاسی'),
@@ -179,20 +337,102 @@ function doPost(e) {
 
   try {
     const update = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const settings = getSystemSettings(ss);
+    const token = settings.BOT_TOKEN;
+
+    if (!token) return output;
+
+    // Handle Message Commands
+    if (update.message && update.message.text) {
+      const txt = update.message.text;
+      const chatId = update.message.chat.id;
+
+      // 1. Check for custom button commands FIRST for high responsiveness
+      if (txt === "📊 آمار کلاس") {
+        const appData = getComprehensiveAppData();
+        const students = Object.values(appData.students || {});
+        const total = students.length;
+        const trend = appData.trend || { data: [] };
+        const avgAtt = trend.data.length > 0 ? trend.data[trend.data.length - 1] : 0;
+        const top = appData.topStudent || "---";
+
+        let msg = "<b>📊 آمار کلی کلاس</b>\n<b>────────────────</b>\n";
+        msg += `👥 تعداد کل متربیان: <code>${total} نفر</code>\n`;
+        msg += `📈 درصد حضور آخرین جلسه: <code>${avgAtt}%</code>\n`;
+        msg += `🥇 متربی برتر فعلی: <code>${top}</code>\n`;
+        msg += "<b>────────────────</b>";
+        sendSimpleMsg(token, chatId, msg);
+        return output;
+      }
+
+      if (txt === "🏆 نفرات برتر") {
+        const appData = getComprehensiveAppData();
+        const students = Object.values(appData.students || {});
+        const sorted = students.sort((a, b) => (b.info?.score || 0) - (a.info?.score || 0)).slice(0, 10);
+        let msg = "<b>🏆 لیست نفرات برتر</b>\n<b>────────────────</b>\n";
+        sorted.forEach((s, i) => {
+          msg += `${i + 1}. <b>${s.info.name}</b> ➔ <code>${s.info.score} امتیاز</code>\n`;
+        });
+        msg += "<b>────────────────</b>";
+        sendSimpleMsg(token, chatId, msg);
+        return output;
+      }
+
+      if (txt === "📋 لیست متربیان") {
+        const appData = getComprehensiveAppData();
+        const students = Object.values(appData.students || {});
+        const names = students.map(s => s.info.name).sort();
+        let msg = "<b>📋 لیست اسامی متربیان</b>\n<b>────────────────</b>\n";
+        names.forEach((n, i) => {
+          msg += `${i + 1}. ${n}\n`;
+        });
+        msg += "<b>────────────────</b>";
+        sendSimpleMsg(token, chatId, msg);
+        return output;
+      }
+
+      if (txt === "🔗 دریافت لینک ورود") {
+        const url = ScriptApp.getService().getUrl();
+        let msg = "<b>🔗 لینک ورود به سامانه</b>\n<b>────────────────</b>\n";
+        msg += `🌐 برای مدیریت کلاس روی لینک زیر کلیک کنید:\n\n${url}\n`;
+        msg += "<b>────────────────</b>";
+        sendSimpleMsg(token, chatId, msg);
+        return output;
+      }
+
+      // 2. Default handler for /start or unrecognized text
+      const keyboard = {
+        keyboard: [
+          [{ text: "📊 آمار کلاس" }, { text: "🏆 نفرات برتر" }],
+          [{ text: "📋 لیست متربیان" }, { text: "🔗 دریافت لینک ورود" }]
+        ],
+        resize_keyboard: true,
+        persistent: true
+      };
+      sendTelegramMsgWithBtn(token, chatId, "<b>🚀 سامانه مدیریت هوشمند کلاس</b>\n<b>────────────────</b>\n✅ وضعیت: <code>فعال و متصل</code>\n⏱ زمان: <code>" + new Date().toLocaleString('fa-IR') + "</code>\n<b>────────────────</b>\n✨ از منوی زیر برای دریافت گزارش‌ها استفاده کنید.", keyboard);
+      return output;
+    }
+
+    // Handle Callback Queries (Buttons)
     if (update.callback_query) {
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const settings = getSystemSettings(ss);
-      const token = settings.BOT_TOKEN;
       const cb = update.callback_query;
 
-      if(token) {
-        try {
-          UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
-            method: 'post', contentType: 'application/json',
-            payload: JSON.stringify({ callback_query_id: cb.id, text: "بررسی شد." })
-          });
-        } catch(err) { Logger.log("AnswerCallback Error: " + err); }
-      }
+      // Feedback to User
+      let feedbackText = "انجام شد.";
+      if (cb.data.startsWith("DONE_")) feedbackText = "✅ مورد خریداری شد.";
+      if (cb.data === "TEST_BTN") feedbackText = "🚀 دکمه با موفقیت کار می‌کند!";
+
+      try {
+        UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+          method: 'post', contentType: 'application/json',
+          payload: JSON.stringify({
+            callback_query_id: cb.id,
+            text: feedbackText,
+            show_alert: cb.data === "TEST_BTN"
+          })
+        });
+      } catch(err) { Logger.log("AnswerCallback Error: " + err); }
 
       if (cb.data.startsWith("DONE_")) {
         const itemId = cb.data.split("_")[1];
@@ -219,7 +459,7 @@ function doPost(e) {
               if (newKeyboard.length > 0) {
                 editMessageReplyMarkup(token, cb.message.chat.id, cb.message.message_id, {inline_keyboard: newKeyboard});
               } else {
-                editMessageText(token, cb.message.chat.id, cb.message.message_id, "🎉 همه موارد خریداری شد.");
+                editMessageText(token, cb.message.chat.id, cb.message.message_id, "<b>✅ خرید تکمیل شد</b>\n<b>────────────────</b>\n🎉 تمامی موارد مورد نیاز برای این طرح درس خریداری و ثبت شدند.\n<b>────────────────</b>");
               }
             }
           } catch (innerE) { Logger.log("Lock Logic Error: " + innerE); } finally { lock.releaseLock(); }
@@ -240,9 +480,95 @@ function setupTelegramWebhook() {
   catch(e) { return "خطا: " + e.message; }
 }
 
-function editMessageText(token, chatId, messageId, text) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageText`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, message_id: messageId, text: text }) }); } catch(e){} }
+function editMessageText(token, chatId, messageId, text) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageText`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, message_id: messageId, text: text, parse_mode: 'HTML' }) }); } catch(e){} }
 function editMessageReplyMarkup(token, chatId, messageId, replyMarkup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: replyMarkup }) }); } catch(e){} }
-function sendTelegramMsgWithBtn(token, chatId, text, markup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, text: text, reply_markup: markup, parse_mode: 'Markdown' }) }); } catch(e){} }
+function sendTelegramMsgWithBtn(token, chatId, text, markup) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, text: text, reply_markup: markup, parse_mode: 'HTML', disable_web_page_preview: true }) }); } catch(e){} }
+function sendSimpleMsg(token, chatId, text) { try { UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'post', contentType: 'application/json', payload: JSON.stringify({ chat_id: chatId, text: text, parse_mode: 'HTML' }) }); } catch(e){} }
+
+function notifyAdmins(msg, markup = null, photoUrl = null) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const settings = getSystemSettings(ss);
+  const token = settings.BOT_TOKEN;
+  // Sanitize input: replace Persian commas with English, remove spaces, then split
+  const chats = String(settings.ADMIN_CHAT_IDS || "").replace(/،/g, ',').replace(/\s/g, '').split(",").filter(id => id !== "");
+  if(!token || chats.length === 0) return;
+
+  const webAppUrl = ScriptApp.getService().getUrl();
+  let finalMarkup = markup;
+
+  if (!finalMarkup && webAppUrl) {
+    finalMarkup = { inline_keyboard: [[{ text: "🌐 ورود به سامانه مدیریت", url: webAppUrl }]] };
+  } else if (finalMarkup && webAppUrl) {
+    let hasDash = false;
+    finalMarkup.inline_keyboard.forEach(row => row.forEach(btn => { if(btn.url === webAppUrl) hasDash = true; }));
+    if (!hasDash) finalMarkup.inline_keyboard.push([{ text: "🌐 ورود به سامانه مدیریت", url: webAppUrl }]);
+  }
+
+  chats.forEach(chatId => {
+    try {
+      let method = photoUrl ? "sendPhoto" : "sendMessage";
+      let payload = {
+        chat_id: chatId,
+        parse_mode: 'HTML'
+      };
+      if (photoUrl) {
+        payload.photo = photoUrl;
+        payload.caption = msg;
+      } else {
+        payload.text = msg;
+        payload.disable_web_page_preview = true;
+      }
+      if (finalMarkup) payload.reply_markup = finalMarkup;
+
+      UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/${method}`, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify(payload)
+      });
+    } catch(e) {
+      Logger.log("NotifyAdmins Error (" + chatId + "): " + e.message);
+    }
+  });
+}
+
+/**
+ * ایجاد یک پیام زیبا و ساختاریافته برای تلگرام
+ */
+function sendBeautifulNotification(title, icon, sections, markup = null, photoUrl = null) {
+  let msg = `<b>${icon} ${title}</b>\n`;
+  msg += `<b>────────────────</b>\n`;
+
+  sections.forEach(sec => {
+    if (sec.label) {
+      msg += `<b>${sec.label}:</b> <code>${sec.value}</code>\n`;
+    } else if (sec.pre) {
+      msg += `<b>${sec.title}:</b>\n<pre>${sec.pre}</pre>\n`;
+    } else if (sec.italic) {
+      msg += `<i>${sec.italic}</i>\n`;
+    } else if (sec.raw) {
+      msg += sec.raw + "\n";
+    }
+  });
+
+  msg += `<b>────────────────</b>`;
+
+  notifyAdmins(msg, markup, photoUrl);
+}
+
+function testTelegramConnection() {
+  const markup = {
+    inline_keyboard: [[{ text: "🔘 تست دکمه شیشه‌ای", callback_data: "TEST_BTN" }]]
+  };
+
+  sendBeautifulNotification("تست موفقیت‌آمیز اتصال", "🚀", [
+    { italic: "سیستم مدیریت هوشمند کلاس با موفقیت به این بات متصل شد." },
+    { label: "نسخه سیستم", value: "4.0.0" },
+    { label: "وضعیت سرور", value: "Online 🟢" },
+    { raw: "\n<i>برای اطمینان از کارکرد دکمه‌ها، روی دکمه زیر کلیک کنید:</i>" }
+  ], markup);
+
+  return {success: true, msg: "✅ پیام تست ارسال شد. لطفاً تلگرام خود را چک کنید."};
+}
 
 // ==========================================
 
@@ -264,7 +590,7 @@ function checkDailyReminders() {
   }
   const settings = getSystemSettings(ss);
   const token = settings.BOT_TOKEN;
-  const chats = String(settings.ADMIN_CHAT_IDS || "").split(",").map(id => id.trim()).filter(id => id !== "");
+  const chats = String(settings.ADMIN_CHAT_IDS || "").replace(/،/g, ',').replace(/\s/g, '').split(",").filter(id => id !== "");
   if(!token || chats.length === 0) return;
   plansData.forEach((p, index) => {
     if(index === 0) return;
@@ -272,16 +598,23 @@ function checkDailyReminders() {
     let isToday = (pDate === todayStr);
     if (pDate !== "" && pDate < todayStr && !isToday) return;
     if(shoppingList[pid] && shoppingList[pid].length > 0) {
-      if(isToday || pPrio === 'high') {
+      if(isToday) {
         let itemsMsg = "", keyboard = [], currentRow = [];
         let list = shoppingList[pid];
         for(let j=0; j<list.length; j++) {
-            itemsMsg += `\n${j+1}. ${list[j].name}`;
+            itemsMsg += `\n${j+1}. ${escapeHtml(list[j].name)}`;
             currentRow.push({text: `✅ ${j+1}`, callback_data: `DONE_${list[j].id}`});
             if(currentRow.length === 4) { keyboard.push(currentRow); currentRow = []; }
         }
         if(currentRow.length > 0) keyboard.push(currentRow);
-        let msg = `${isToday ? "🚨 *فوری*" : "🛒 *خرید*"} (${pDate})\n\n📌 *${planTitle}*${itemsMsg}`;
+        let msg = `<b>${isToday ? "🚨 یادآوری فوری" : "🛒 لیست خرید"}</b>\n`;
+        msg += `<b>────────────────</b>\n`;
+        msg += `🗓 <b>تاریخ اجرا:</b> <code>${escapeHtml(pDate)}</code>\n`;
+        msg += `📌 <b>طرح درس:</b> ${escapeHtml(planTitle)}\n`;
+        msg += `<b>────────────────</b>\n`;
+        msg += `🛍 <b>موارد مورد نیاز:</b>\n${itemsMsg}\n\n`;
+        msg += `<i>برای تایید خرید، روی شماره مربوطه کلیک کنید:</i>`;
+
         chats.forEach(id => sendTelegramMsgWithBtn(token, id, msg, {inline_keyboard: keyboard}));
       }
     }
@@ -323,8 +656,34 @@ function getCombinedHistory(ss) {
 function saveManualLog(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(CONFIG.SHEETS.ARCHIVE_LOGS);
-  if(sh) sh.appendRow([data.date, data.type, data.title, data.details]);
-  return {success: true, msg: "✅ ثبت شد."};
+  if (sh) sh.appendRow([data.date, data.type, data.title, data.details]);
+
+  let typeName = data.type === 'grouping' ? 'گروه‌بندی' : 'فعالیت آزاد';
+  let typeIcon = data.type === 'grouping' ? '👥' : '📝';
+
+  let sections = [
+    { label: "عنوان", value: escapeHtml(data.title) },
+    { label: "تاریخ", value: escapeHtml(data.date) }
+  ];
+
+  if (data.type === 'grouping') {
+    try {
+      let d = JSON.parse(data.details);
+      if (d.isMultiGroup) {
+        let grps = d.groups.map(g => `▫️ <b>${escapeHtml(g.name)}:</b>\n${escapeHtml(g.members.join('، '))}`).join('\n\n');
+        sections.push({ raw: `<b>🔍 اعضای گروه‌ها:</b>\n${grps}` });
+      } else {
+        sections.push({ title: "جزئیات", pre: escapeHtml(data.details) });
+      }
+    } catch (e) { sections.push({ title: "جزئیات", pre: escapeHtml(data.details) }); }
+  } else {
+    sections.push({ italic: escapeHtml(data.details) });
+  }
+
+  sendBeautifulNotification(typeName, typeIcon, sections);
+
+  syncSheetToFirebase();
+  return { success: true, msg: "✅ ثبت شد." };
 }
 
 function checkSheets(ss) {
@@ -339,11 +698,31 @@ function checkSheets(ss) {
       }
       if(sheetName === CONFIG.SHEETS.MI_CONFIG) fillMIData(sh);
     } else {
+        // Ensure all columns exist
+        let lastCol = sh.getLastColumn();
+        if (lastCol > 0) {
+          let headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+          let expectedHeaders = SHEET_STRUCTURE[sheetName];
+          expectedHeaders.forEach(h => {
+            if (!headers.includes(h)) {
+              sh.getRange(1, lastCol + 1).setValue(h);
+              lastCol++;
+            }
+          });
+        }
+
         if(sheetName === CONFIG.SHEETS.SETTINGS) {
             const data = sh.getDataRange().getValues();
             const keys = data.map(r => r[0]);
             if(!keys.includes("BOT_TOKEN")) sh.appendRow(["BOT_TOKEN", "", "توکن ربات تلگرام"]);
             if(!keys.includes("ADMIN_CHAT_IDS")) sh.appendRow(["ADMIN_CHAT_IDS", "", "آیدی مدیران تلگرام"]);
+        }
+        if(sheetName === CONFIG.SHEETS.MI_CONFIG) {
+          const firstVal = sh.getRange(2, 1).getValue();
+          if(firstVal === "زبانی-کلامی 🗣️" || firstVal === "هوش کلامی 🗣️") {
+             const rowValue = sh.getRange(2, 3).getValue();
+             if(!rowValue.includes("(")) fillMIData(sh);
+          }
         }
     }
   }
@@ -351,14 +730,14 @@ function checkSheets(ss) {
 
 function fillMIData(sh) {
   const data = [
-    ["زبانی-کلامی 🗣️", "توانایی درک و تولید زبان.", "استفاده از واژگان غنی,بیان شیوا", "قطع کردن حرف دیگران"],
-    ["منطقی-ریاضی 🔢", "تحلیل مسائل و تفکر علمی.", "حل معما,استدلال قوی", "بی‌نظمی در استدلال"],
-    ["تصویری-فضایی 🎨", "تجسم فضایی.", "نقاشی خوب,تصویرسازی", "گم کردن مسیرها"],
-    ["بدنی-جنبشی ⚽", "استفاده از بدن.", "مهارت ورزش,زبان بدن", "بی‌قراری"],
-    ["موسیقایی 🎵", "حساسیت به ریتم.", "تشخیص ریتم,زمزمه", "بی‌توجهی به صداها"],
-    ["میان‌فردی 🤝", "درک دیگران.", "رهبری گروه,همدلی", "پرخاشگری,انزوا"],
-    ["درون‌فردی 🧘", "شناخت خود.", "داشتن هدف,کنترل خشم", "عدم شناخت احساس"],
-    ["طبیعت‌گرا 🌿", "درک طبیعت.", "علاقه به حیوانات,مشاهده محیط", "آسیب به طبیعت"]
+    ["هوش کلامی 🗣️", "افراد با هوش کلامی بالا، مجریان و سخنوران توانمندی هستند.", "پرگو و وراجی (تمایل زیادی به صحبت کردن دارند),استفاده از واژگان غنی (دایره لغات وسیع و حاضرجواب هستند),شنوندگان فعال (دقت به صحبت‌های دیگران و بهره‌گیری در مکالمات),تکلم زودهنگام در کودکی (زودتر از همسالان شروع به صحبت می‌کنند),تعامل کلامی با بزرگسالان (توانایی ارتباط کلامی با بزرگترها در کودکی),صحبت با جزئیات (توضیحات و روایت‌های پر از جزئیات),صدای جذاب و رسا (لحن و صدای دلنشین و گیرا),تمایل به آموزش در کلاس (علاقه به تدریس و یاد دادن به دیگران)", ""],
+    ["هوش منطقی-ریاضی 🔢", "افراد با هوش منطقی-ریاضی اغلب مدرسین خود را به چالش می‌کشند.", "پرسش‌های مکرر و غیرمعمول (سوالات عجیب و چالش‌برانگیز),توانایی در دسته‌بندی اطلاعات,یادگیری سریع رنگ‌ها و اسامی,صحبت فراتر از سن (گفتار پخته‌تر از سن),توانایی در فهم ریاضیات,علاقه‌مندی به بازی‌های فکری و حل مسئله,علاقه زیاد به یادگیری,تمرکز بالا و تحرک کمتر,نگاه انتقادی به مسائل", ""],
+    ["هوش بین فردی 🤝", "توانایی درک و تعامل مؤثر با دیگران.", "درک سریع احساسات اطرافیان (حالات والدین یا افراد نزدیک),برقراری ارتباط سریع از کودکی,واکنش‌های هیجانی مناسب و سنجیده,موفقیت در بیان عقاید و احساسات,مسالمت‌جو و صلح‌جو در میان همسالان,سازش‌پذیری و معاشرت (توصیف معلمان),دوستان زیاد و رهبری گروه,درک شرایط و احوال دیگران", ""],
+    ["هوش درون فردی 🧘", "توانایی شناخت خود و کنترل هیجانات درونی.", "آرامش و وقار (متانت خاص),ترجیح تنهایی برای حل مسائل,شهود و حس ششم قوی,اعتماد به نفس بالا,توانایی بالا در کنترل احساسات (خشم),اصلاح رفتار پس از اشتباه,لذت از فعالیت‌های فردی (مطالعه و نوشتن),خلاقیت و تخیل بسیار قوی,طرح پرسش‌های وجودی (از کجا آمده‌ایم؟),رفتار و پوشش فراتر از سن", ""],
+    ["هوش تصویری/فضایی 🎨", "توانایی تجسم اجسام و خلق آثار بصری.", "مهارت بالا در نقاشی,علاقه به مونتاژ و دمونتاژ اسباب‌بازی,توانایی عالی در حل پازل,استعداد در ساخت سازه‌های لگو,موفقیت در فعالیت‌های دستی (مجسمه‌سازی),عملکرد خوب در درس املا,حافظه تصویری قوی,علاقه به اسباب‌بازی‌های هندسی,توانایی در حل مکعب روبیک", ""],
+    ["هوش جنبشی-حرکتی ⚽", "توانایی استفاده از مهارت‌های بدنی و حرکتی.", "تحرک زیاد نسبت به همسالان,حرکات تکراری دست و پا هنگام نشستن,ترجیح بازی‌های حرکتی به بازی‌های فکری,مستعد و توانمند در ورزش,داوطلب شدن برای کمک به دیگران,بی‌علاقگی به نشستن طولانی‌مدت,واکنش‌های سریع و ناگهانی,تشخیص بیش‌فعالی (به خصوص در مدرسه),به چالش کشیدن تعادل بدن", ""],
+    ["هوش طبیعت‌گرا 🌿", "علاقه به شناخت و حفظ محیط زیست و موجودات زنده.", "علاقه زیاد به گیاهان و حیوانات (نگهداری در منزل),علاقه‌مند به مباحث حیات وحش و طبیعت,علاقه به حضور در طبیعت و فضاهای سرسبز,علاقه به جمع‌آوری نمونه‌های طبیعت (حشرات),حساسیت به حفظ طبیعت و جمع‌آوری زباله", ""],
+    ["هوش موسیقیایی 🎵", "حساسیت به ریتم، آهنگ و صداها.", "تشخیص ریتم,زمزمه,آواز خواندن,درک تن صدا", "بی‌توجهی به صداها"]
   ];
   sh.getRange(2, 1, data.length, 4).setValues(data);
 }
@@ -370,11 +749,41 @@ function updateCalculations(ss) {
   const pD = shP.getDataRange().getValues();
   const aD = shA.getDataRange().getValues();
   let m = {};
-  for(let i=1; i<pD.length; i++) { if(pD[i][0]) m[pD[i][0]] = {r: i+1, ab: 0, la: 0, sy: 0, ma: Number(pD[i][6]) || 0}; }
-  if(aD.length > 0) { for(let c=1; c<aD[0].length; c++) { for(let r=1; r<aD.length; r++) { let n = aD[r][0]; let v = String(aD[r][c]); if(m[n]) { if(v.includes("غیبت")) { m[n].ab++; m[n].sy -= 1; } else if(v.includes("تاخیر")) { m[n].la++; } else if(v.includes("حاضر")) { m[n].sy += 1; } else if(v.includes("موجه")) { m[n].sy += 0.5; } } } } }
-  for(let n in m) { shP.getRange(m[n].r, 2, 1, 3).setValues([[m[n].ab, m[n].la, m[n].sy + m[n].ma]]); }
+  for(let i=1; i<pD.length; i++) {
+    if(pD[i][0]) m[pD[i][0]] = {r: i+1, ab: 0, la: 0, lm: 0, sy: 0, ma: Number(pD[i][6]) || 0};
+  }
+  if(aD.length > 0) {
+    for(let c=1; c<aD[0].length; c++) {
+      for(let r=1; r<aD.length; r++) {
+        let n = aD[r][0];
+        let v = String(aD[r][c]);
+        if(m[n]) {
+          if(v.includes("غیبت")) { m[n].ab++; m[n].sy -= 1; }
+          else if(v.includes("تاخیر")) {
+            m[n].la++;
+            m[n].sy += 1;
+            let minsMatch = v.match(/\(([^)]+)\)/);
+            if (minsMatch) {
+              let minsStr = minsMatch[1].replace(/[^0-9۰-۹]/g, '');
+              m[n].lm += parseInt(toEnglishDigits(minsStr)) || 0;
+            }
+          }
+          else if(v.includes("حاضر")) { m[n].sy += 1; }
+          else if(v.includes("موجه")) { m[n].sy += 0.5; }
+        }
+      }
+    }
+  }
+  for(let n in m) {
+    shP.getRange(m[n].r, 2, 1, 3).setValues([[m[n].ab, m[n].la, m[n].sy + m[n].ma]]);
+    // Always check for the new column and set total minutes
+    let headers = shP.getRange(1, 1, 1, shP.getLastColumn()).getValues()[0];
+    let lmIdx = headers.indexOf("مجموع_دقایق_تاخیر");
+    if (lmIdx !== -1) {
+      shP.getRange(m[n].r, lmIdx + 1).setValue(m[n].lm);
+    }
+  }
 }
-
 function getSystemSettings(ss) {
   const sh = ss.getSheetByName(CONFIG.SHEETS.SETTINGS);
   if(!sh) return {};
@@ -389,20 +798,69 @@ function saveSystemSettings(f) {
   const sh = ss.getSheetByName(CONFIG.SHEETS.SETTINGS);
   const d = sh.getDataRange().getValues();
   for(let i=1; i<d.length; i++) {
-    if(f[d[i][0]] !== undefined) sh.getRange(i+1, 2).setValue(f[d[i][0]]);
+    const key = d[i][0];
+    if(f[key] !== undefined) {
+      // Force strings for IDs and tokens to prevent Sheets from formatting them as large numbers
+      const val = (key === "ADMIN_CHAT_IDS" || key === "BOT_TOKEN") ? "'" + f[key] : f[key];
+      sh.getRange(i+1, 2).setValue(val);
+    }
   }
+  syncSheetToFirebase();
   return {success: true, msg: "✅ تنظیمات ذخیره شد."};
 }
 
 function normalizeDateStr(d) {
   if(!d) return "";
-  let s = String(d).replace(/[۰-۹]/g, c => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(c)]);
+  let s = toEnglishDigits(String(d));
   let p = s.split('/');
   if(p.length !== 3) return s;
   return `${p[0]}/${p[1].padStart(2, '0')}/${p[2].padStart(2, '0')}`;
 }
 
+function toEnglishDigits(str) {
+  if (typeof str !== 'string') str = String(str);
+  return str.replace(/[۰-۹]/g, c => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(c)]);
+}
+
 function getTodayStr() { return normalizeDateStr(new Date().toLocaleDateString('fa-IR')); }
+
+function generateAttendanceChartUrl(trendData) {
+  if (!trendData || !trendData.labels || trendData.labels.length === 0) return null;
+
+  const chartConfig = {
+    type: 'line',
+    data: {
+      labels: trendData.labels,
+      datasets: [{
+        label: 'حضور %',
+        data: trendData.data,
+        borderColor: '#4f46e5',
+        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+        fill: true,
+        pointRadius: 4,
+        lineTension: 0.4
+      }]
+    },
+    options: {
+      title: { display: true, text: 'روند حضور و غیاب کلاس' },
+      scales: {
+        yAxes: [{ ticks: { beginAtZero: true, max: 100 } }]
+      }
+    }
+  };
+
+  return "https://quickchart.io/chart?c=" + encodeURIComponent(JSON.stringify(chartConfig)) + "&w=500&h=300&bkg=white";
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 function fixUrl(u) {
   if(!u) return CONFIG.DEFAULT_IMG;
@@ -448,7 +906,7 @@ function getPlans(ss) {
 
 // --- توابع ذخیره سازی اصلاح شده ---
 
-function savePlan(id, date, title, priority, sin, modules) {
+function savePlan(id, date, title, sin, modules) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const shP = ss.getSheetByName(CONFIG.SHEETS.PLANS);
     const shE = ss.getSheetByName(CONFIG.SHEETS.ESSENTIALS);
@@ -468,6 +926,7 @@ function savePlan(id, date, title, priority, sin, modules) {
         }
     }
 
+    let priority = "low"; // Removed from UI, defaulting
     if(rowIndex === -1) {
         shP.appendRow([date, title, priority, modules, sin, currentId, 'Active']);
     } else {
@@ -496,6 +955,44 @@ function savePlan(id, date, title, priority, sin, modules) {
         if(newRows.length > 0) shE.getRange(shE.getLastRow()+1, 1, newRows.length, 8).setValues(newRows);
     } catch(e) {}
 
+    // Telegram Notification for Shopping List
+    let buyList = [];
+    try {
+        const mods = JSON.parse(modules);
+        mods.forEach(m => {
+            if(m.items) m.items.forEach(it => { if(it.type === 'buy') buyList.push(it.name); });
+        });
+    } catch(e) {}
+
+    let sections = [
+      { label: "عنوان", value: escapeHtml(title) },
+      { label: "تاریخ اجرا", value: escapeHtml(date) }
+    ];
+
+    if (sin && sin.trim() !== "") {
+      sections.push({ title: "⏰ سین برنامه (زمان‌بندی)", pre: escapeHtml(sin) });
+    }
+
+    try {
+      const mods = JSON.parse(modules);
+      if (mods && mods.length > 0) {
+        let modText = mods.map((m, i) => {
+          let t = `<b>${i+1}. ${escapeHtml(m.name)}</b>`;
+          if (m.desc) t += `\n<i>${escapeHtml(m.desc)}</i>`;
+          return t;
+        }).join('\n\n');
+        sections.push({ raw: `<b>🧩 ماژول‌های برنامه:</b>\n${modText}` });
+      }
+    } catch(e) {}
+
+    if(buyList.length > 0) {
+        let listText = buyList.map((item, idx) => `${idx + 1}. ${escapeHtml(item)}`).join('\n');
+        sections.push({ title: "🛒 لیست خرید لوازم", pre: listText });
+    }
+
+    sendBeautifulNotification("طرح درس جدید ثبت شد", "📚", sections);
+
+    syncSheetToFirebase();
     return {success: true, msg: "✅ طرح درس با موفقیت ذخیره شد."};
 }
 
@@ -521,6 +1018,8 @@ function submitAttendance(data) {
     let nameRowMap = {};
     for(let i=1; i<rows.length; i++) nameRowMap[rows[i][0]] = i + 1;
 
+    let p = [], a = [], l = [], e = [];
+
     data.records.forEach(rec => {
         let r = nameRowMap[rec.name];
         if(!r) {
@@ -530,24 +1029,157 @@ function submitAttendance(data) {
         }
 
         let statusText = "";
-        if(rec.status === 'Present') statusText = "حاضر";
-        else if(rec.status === 'Absent') statusText = "غیبت";
-        else if(rec.status === 'Late') statusText = `تاخیر (${rec.min} دقیقه)`;
-        else if(rec.status === 'Excused') statusText = "موجه";
+        if(rec.status === 'Present') {
+          statusText = "حاضر";
+          p.push(rec.name);
+        }
+        else if(rec.status === 'Absent') {
+          statusText = "غیبت";
+          a.push(rec.name);
+        }
+        else if(rec.status === 'Late') {
+          let mins = toEnglishDigits(String(rec.min || "0")).replace(/[^0-9]/g, '');
+          statusText = `تاخیر (${mins} دقیقه)`;
+          l.push(`${rec.name} (${mins}د)`);
+        }
+        else if(rec.status === 'Excused') {
+          statusText = "موجه";
+          e.push(rec.name);
+        }
 
         shA.getRange(r, colIndex).setValue(statusText);
     });
 
+    // Update before calculating chart
     updateCalculations(ss);
+
+    // Telegram Notification
+    const trendData = getTrendData(ss);
+    const photoUrl = generateAttendanceChartUrl(trendData);
+    const currentRate = trendData.data.length > 0 ? trendData.data[trendData.data.length - 1] : 0;
+
+    let sections = [
+      { label: "تاریخ", value: escapeHtml(today) },
+      { label: "درصد حضور این جلسه", value: currentRate + "%" }
+    ];
+
+    if(p.length) sections.push({ title: "✅ حضور به‌موقع", pre: escapeHtml(p.join('، ')) });
+    if(l.length) sections.push({ title: "⏰ حضور با تاخیر", pre: escapeHtml(l.join('، ')) });
+    if(a.length) sections.push({ title: "❌ غایبین", pre: escapeHtml(a.join('، ')) });
+    if(e.length) sections.push({ title: "🏳️ غایبین موجه", pre: escapeHtml(e.join('، ')) });
+
+    sendBeautifulNotification("گزارش حضور و غیاب", "📊", sections, null, photoUrl);
+    syncSheetToFirebase();
     return {success: true, msg: "✅ حضور و غیاب ثبت شد."};
 }
+function saveNote(d, t) {
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.NOTES).appendRow([d, t]);
 
-function saveNote(d,t){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.NOTES).appendRow([d,t]);return{success:true,msg:"یادداشت ذخیره شد"};}
-function addStudent(n){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE).appendRow([n,0,0,0,"ثبت نام","",0]);return{success:true};}
-function delStudent(n){const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=0;i<d.length;i++)if(d[i][0]==n){sh.deleteRow(i+1);return{success:true};}}
-function addManualScore(n,p){const ss=SpreadsheetApp.getActiveSpreadsheet();const sh=ss.getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=1;i<d.length;i++)if(d[i][0]==n){sh.getRange(i+1,7).setValue((Number(d[i][6])||0)+Number(p));updateCalculations(ss);return{success:true,msg:"✅ امتیاز ثبت شد"}}; return {success:false};}
-function submitMILog(sn,it,bh,sc){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.MI_LOGS).appendRow([new Date(),sn,it,bh,sc]);return{success:true,msg:"✅ ثبت شد"};}
-function deletePlan(id){const ss=SpreadsheetApp.getActiveSpreadsheet();const sh=ss.getSheetByName(CONFIG.SHEETS.PLANS);const d=sh.getDataRange().getValues();for(let i=1;i<d.length;i++)if(String(d[i][5]).trim()==String(id).trim()){sh.deleteRow(i+1);const shE=ss.getSheetByName(CONFIG.SHEETS.ESSENTIALS);const edat=shE.getDataRange().getValues();for(let j=edat.length-1;j>=1;j--)if(String(edat[j][0]).trim()==String(id).trim())shE.deleteRow(j+1);return{success:true,msg:"🗑 طرح درس حذف شد"}}return{success:false}}
+  sendBeautifulNotification("یادداشت جدید جلسه", "📒", [
+    { label: "تاریخ", value: escapeHtml(d) },
+    { italic: escapeHtml(t) }
+  ]);
+
+  syncSheetToFirebase();
+  return { success: true, msg: "یادداشت ذخیره شد" };
+}
+function addStudent(n){SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE).appendRow([n,0,0,0,"ثبت نام","",0]); syncSheetToFirebase(); return{success:true};}
+function requestDeleteOTP(studentName) {
+  const otp = Math.floor(10000 + Math.random() * 90000).toString();
+  CacheService.getScriptCache().put(`OTP_${studentName}`, otp, 300); // 5 minutes
+
+  const msg = `🚨 <b>درخواست حذف متربی</b>\n<b>────────────────</b>\n👤 نام متربی: <code>${escapeHtml(studentName)}</code>\n🔑 کد تایید: <code>${otp}</code>\n<b>────────────────</b>\n⚠️ این کد ۵ دقیقه اعتبار دارد.`;
+  notifyAdmins(msg);
+
+  return { success: true };
+}
+
+function verifyAndDeleteStudent(studentName, otp) {
+  const cachedOtp = CacheService.getScriptCache().get(`OTP_${studentName}`);
+  if (!cachedOtp || cachedOtp !== otp) {
+    return { success: false, msg: "❌ کد تایید نامعتبر است یا منقضی شده است." };
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1. Delete from Individuals (افراد)
+  const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
+  if (shP) {
+    const data = shP.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][0]) === studentName) shP.deleteRow(i + 1);
+    }
+  }
+
+  // 2. Delete from Attendance (حضور و غیاب)
+  const shA = ss.getSheetByName(CONFIG.SHEETS.ATT);
+  if (shA) {
+    const data = shA.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][0]) === studentName) shA.deleteRow(i + 1);
+    }
+  }
+
+  // 3. Delete from MI Logs (لاگ_هوش)
+  const shMI = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
+  if (shMI) {
+    const data = shMI.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (String(data[i][1]) === studentName) shMI.deleteRow(i + 1);
+    }
+  }
+
+  // 4. Delete from Firebase
+  const url = `${FB_CONFIG.URL}/classDB/students/${encodeURIComponent(studentName)}.json?auth=${FB_CONFIG.SECRET}`;
+  try {
+    UrlFetchApp.fetch(url, { method: 'delete' });
+  } catch (e) { Logger.log("Firebase Student Delete Error: " + e.message); }
+
+  CacheService.getScriptCache().remove(`OTP_${studentName}`);
+  syncSheetToFirebase();
+
+  notifyAdmins(`✅ <b>متربی حذف شد</b>\n<b>────────────────</b>\n👤 نام: <code>${escapeHtml(studentName)}</code>\n🗑 تمامی سوابق این فرد از سیستم حذف گردید.`);
+
+  return { success: true, msg: "✅ متربی و تمامی سوابق او با موفقیت حذف شدند." };
+}
+
+function delStudent(n){const sh=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.PEOPLE);const d=sh.getDataRange().getValues();for(let i=0;i<d.length;i++)if(d[i][0]==n){sh.deleteRow(i+1); syncSheetToFirebase(); return{success:true};}}
+function addManualScore(n, p) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
+  const d = sh.getDataRange().getValues();
+  for (let i = 1; i < d.length; i++) {
+    if (d[i][0] == n) {
+      sh.getRange(i + 1, 7).setValue((Number(d[i][6]) || 0) + Number(p));
+      updateCalculations(ss);
+
+      sendBeautifulNotification("ثبت امتیاز دستی", "⭐", [
+        { label: "متربی", value: escapeHtml(n) },
+        { label: "تغییر امتیاز", value: (p > 0 ? '+' : '') + p },
+        { label: "مجموع امتیازات", value: (Number(d[i][3]) || 0) + Number(p) }
+      ]);
+      syncSheetToFirebase();
+      return { success: true, msg: "✅ امتیاز ثبت شد" };
+    }
+  }
+  return { success: false };
+}
+function submitMILog(sn, it, bh, sc) {
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEETS.MI_LOGS).appendRow([new Date(), sn, it, bh, sc]);
+
+  let statusText = sc === 1 ? "✅ مثبت" : (sc === -1 ? "❌ منفی" : "⚪ خنثی");
+
+  sendBeautifulNotification("ثبت هوش چندگانه", "🧠", [
+    { label: "متربی", value: escapeHtml(sn) },
+    { label: "نوع هوش", value: escapeHtml(it) },
+    { label: "وضعیت", value: statusText },
+    { italic: escapeHtml(bh) }
+  ]);
+
+  syncSheetToFirebase();
+  return { success: true, msg: "✅ ثبت شد" };
+}
+function deletePlan(id){const ss=SpreadsheetApp.getActiveSpreadsheet();const sh=ss.getSheetByName(CONFIG.SHEETS.PLANS);const d=sh.getDataRange().getValues();for(let i=1;i<d.length;i++)if(String(d[i][5]).trim()==String(id).trim()){sh.deleteRow(i+1);const shE=ss.getSheetByName(CONFIG.SHEETS.ESSENTIALS);const edat=shE.getDataRange().getValues();for(let j=edat.length-1;j>=1;j--)if(String(edat[j][0]).trim()==String(id).trim())shE.deleteRow(j+1); syncSheetToFirebase(); return{success:true,msg:"🗑 طرح درس حذف شد"}}return{success:false}}
 function updateStudentProfile(data){
   const ss=SpreadsheetApp.getActiveSpreadsheet();
   const shP=ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
@@ -561,6 +1193,7 @@ function updateStudentProfile(data){
       shP.getRange(i+1,12).setValue(data.school || "");
       shP.getRange(i+1,13).setValue(data.medical || "");
       shP.getRange(i+1,14).setValue(data.parentNote || "");
+      syncSheetToFirebase();
       return{success:true,msg:"✅ بروزرسانی شد"};
     }
   }
@@ -574,7 +1207,8 @@ function getTrendData(ss) {
   let labels = [], trend = [], details = [];
   if(data.length > 0) {
     const headers = data[0];
-    for(let c=Math.max(1, headers.length-10); c<headers.length; c++){
+    // Increase history from 10 to last 30 sessions for better trend analysis
+    for(let c=Math.max(1, headers.length-30); c<headers.length; c++){
       labels.push(headers[c] instanceof Date ? headers[c].toLocaleDateString('fa-IR') : String(headers[c]));
       let p=0, a=0, l=0, e=0, t=0;
       for(let r=1; r<data.length; r++) {
@@ -587,48 +1221,169 @@ function getTrendData(ss) {
           else if(val.includes("موجه")) e++;
         }
       }
-      trend.push(t>0 ? Math.round((p/t)*100) : 0);
+      // Presence Rate calculation: (Present + Late) / Total
+      // This fix ensures "Late" kids are counted as present in the percentage
+      trend.push(t>0 ? Math.round(((p+l)/t)*100) : 0);
       details.push({p, a, l, e, total: t});
     }
   }
   return {labels, data: trend, details};
 }
-function getStudentDetails(n){ const ss=SpreadsheetApp.getActiveSpreadsheet(); const shP=ss.getSheetByName(CONFIG.SHEETS.PEOPLE); const shA=ss.getSheetByName(CONFIG.SHEETS.ATT); if(!shA) return {history:[],stats:{p:0,a:0,l:0,e:0},scores:{system:0,manual:0,total:0},growth:{labels:[],data:[]}}; const pD=shP.getDataRange().getValues(); let m=0; const rP=pD.find(r=>r[0]==n); if(rP) m=Number(rP[6])||0; const d=shA.getDataRange().getValues(); let h=[],s={p:0,a:0,l:0,e:0},gl=[],gd=[],sys=0,ri=-1; for(let i=1;i<d.length;i++)if(d[i][0]==n){ri=i;break} if(ri>-1){ const he=d[0]; for(let c=1;c<he.length;c++){ let v=String(d[ri][c]),da=(he[c]instanceof Date)?he[c].toLocaleDateString('fa-IR'):String(he[c]); if(v&&v!=""){ if(v.includes("حاضر")){sys++;s.p++}else if(v.includes("غیبت")){sys--;s.a++}else if(v.includes("تاخیر")){s.l++} gl.push(da); gd.push(sys+m) } } for(let c=he.length-1;c>=1;c--){ let v=String(d[ri][c]),da=(he[c]instanceof Date)?he[c].toLocaleDateString('fa-IR'):String(he[c]); if(v!="") h.push({date:da,status:v}) } } return {history:h,stats:s,scores:{system:sys,manual:m,total:sys+m},growth:{labels:gl,data:gd}}; }
+function getStudentDetails(n) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
+  const shA = ss.getSheetByName(CONFIG.SHEETS.ATT);
+  if (!shA) return { history: [], stats: { p: 0, a: 0, l: 0, e: 0, lm: 0 }, scores: { system: 0, manual: 0, total: 0 }, growth: { labels: [], data: [] } };
+
+  const pD = shP.getDataRange().getValues();
+  let m = 0;
+  const rP = pD.find(r => r[0] == n);
+  if (rP) m = Number(rP[6]) || 0;
+
+  const d = shA.getDataRange().getValues();
+  let h = [], s = { p: 0, a: 0, l: 0, e: 0, lm: 0 }, gl = [], gd = [], sys = 0, ri = -1;
+
+  for (let i = 1; i < d.length; i++) if (d[i][0] == n) { ri = i; break }
+
+  if (ri > -1) {
+    const he = d[0];
+    for (let c = 1; c < he.length; c++) {
+      let v = String(d[ri][c]), da = (he[c] instanceof Date) ? he[c].toLocaleDateString('fa-IR') : String(he[c]);
+      if (v && v != "") {
+        if (v.includes("حاضر")) { sys++; s.p++ }
+        else if (v.includes("غیبت")) { sys--; s.a++ }
+        else if (v.includes("تاخیر")) {
+          sys++;
+          s.l++;
+          let minsMatch = v.match(/\(([^)]+)\)/);
+          if (minsMatch) {
+            let minsStr = minsMatch[1].replace(/[^0-9۰-۹]/g, '');
+            s.lm += parseInt(toEnglishDigits(minsStr)) || 0;
+          }
+        }
+        else if (v.includes("موجه")) { s.e++ }
+
+        gl.push(normalizeDateStr(da));
+        gd.push(sys + m)
+      }
+    }
+    for (let c = he.length - 1; c >= 1; c--) {
+      let v = String(d[ri][c]), da = (he[c] instanceof Date) ? he[c].toLocaleDateString('fa-IR') : String(he[c]);
+      if (v != "") h.push({ date: normalizeDateStr(da), status: v })
+    }
+  }
+  return { history: h, stats: s, scores: { system: sys, manual: m, total: sys + m }, growth: { labels: gl, data: gd } };
+}
 function getStudentMIProfile(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shLogs = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
   const shConf = ss.getSheetByName(CONFIG.SHEETS.MI_CONFIG);
-  if(!shLogs || !shConf) return {config:[], chart:{labels:[],data:[]}, history:[]};
+  if(!shLogs || !shConf) return {config:[], chart:{labels:[],data:[]}, history:[], traitStates:{}};
+
   const cData = shConf.getDataRange().getValues();
   let confArr = [];
-  for(let i=1; i<cData.length; i++) { confArr.push({type: cData[i][0], desc: cData[i][1], pos: cData[i][2], neg: cData[i][3]}); }
+  for(let i=1; i<cData.length; i++) {
+    confArr.push({
+      type: cData[i][0],
+      desc: cData[i][1],
+      pos: cData[i][2] ? String(cData[i][2]).split(',') : [],
+      neg: cData[i][3] ? String(cData[i][3]).split(',') : []
+    });
+  }
+
   const lData = shLogs.getDataRange().getValues();
-  let scores = {}; let history = [];
-  confArr.forEach(c => scores[c.type] = 0);
-  for(let i=1; i<lData.length; i++) { if(lData[i][1] == name) { let t = lData[i][2]; let s = Number(lData[i][4]); if(scores[t] !== undefined) scores[t] += s; history.push({ date: new Date(lData[i][0]).toLocaleDateString('fa-IR'), type: t, behavior: lData[i][3], score: s }); } }
+  let traitStates = {};
+  let history = [];
+
+  for(let i=1; i<lData.length; i++) {
+    if(String(lData[i][1]) === String(name)) {
+      let type = lData[i][2];
+      let behavior = lData[i][3];
+      let score = Number(lData[i][4]);
+
+      // ذخیره آخرین وضعیت برای هر رفتار
+      traitStates[type + "_" + behavior] = score;
+
+      history.push({
+        date: new Date(lData[i][0]).toLocaleDateString('fa-IR'),
+        type: type,
+        behavior: behavior,
+        score: score
+      });
+    }
+  }
+
+  let scores = {};
+  confArr.forEach(c => {
+    scores[c.type] = 0;
+    // جمع امتیازات بر اساس آخرین وضعیت هر ویژگی تعریف شده
+    c.pos.forEach(p => {
+      scores[c.type] += (traitStates[c.type + "_" + p] || 0);
+    });
+    c.neg.forEach(n => {
+      scores[c.type] += (traitStates[c.type + "_" + n] || 0);
+    });
+  });
+
   let chartData = []; let labels = [];
-  confArr.forEach(c => { labels.push(c.type); chartData.push(Math.max(0, scores[c.type])); });
-  return { config: confArr, chart: { labels, data: chartData }, history: history.reverse().slice(0, 15) };
+  confArr.forEach(c => {
+    labels.push(c.type);
+    chartData.push(Math.max(0, scores[c.type]));
+  });
+
+  return {
+    config: confArr,
+    chart: { labels, data: chartData },
+    history: history.reverse().slice(0, 20),
+    traitStates: traitStates
+  };
 }
 
 function getClassMIData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const shLogs = ss.getSheetByName(CONFIG.SHEETS.MI_LOGS);
   const shConf = ss.getSheetByName(CONFIG.SHEETS.MI_CONFIG);
-  if(!shLogs || !shConf) return {labels: [], averages: []};
+  const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
+  if(!shLogs || !shConf || !shP) return {labels: [], averages: []};
+
+  const students = shP.getDataRange().getValues().slice(1).map(r => r[0]).filter(n => n);
+  const studentCount = Math.max(1, students.length);
+
   const cData = shConf.getDataRange().getValues();
   let labels = [];
-  for(let i=1; i<cData.length; i++) labels.push(cData[i][0]);
+  let confArr = [];
+  for(let i=1; i<cData.length; i++) {
+    labels.push(cData[i][0]);
+    confArr.push({
+      type: cData[i][0],
+      traits: (cData[i][2] ? String(cData[i][2]).split(',') : []).concat(cData[i][3] ? String(cData[i][3]).split(',') : [])
+    });
+  }
+
   const lData = shLogs.getDataRange().getValues();
-  const shP = ss.getSheetByName(CONFIG.SHEETS.PEOPLE);
-  const studentCount = Math.max(1, shP.getLastRow() - 1);
+  let studentTraitStates = {}; // { "Student|Type|Trait": score }
+
+  for(let i=1; i<lData.length; i++) {
+    let sName = lData[i][1];
+    let type = lData[i][2];
+    let trait = lData[i][3];
+    let score = Number(lData[i][4]);
+    studentTraitStates[sName + "|" + type + "|" + trait] = score;
+  }
+
   let totalScores = {};
   labels.forEach(l => totalScores[l] = 0);
-  for(let i=1; i<lData.length; i++) {
-    let t = lData[i][2];
-    let s = Number(lData[i][4]);
-    if(totalScores[t] !== undefined) totalScores[t] += s;
-  }
+
+  students.forEach(sName => {
+    confArr.forEach(c => {
+      let studentTypeScore = 0;
+      c.traits.forEach(t => {
+        studentTypeScore += (studentTraitStates[sName + "|" + c.type + "|" + t] || 0);
+      });
+      totalScores[c.type] += Math.max(0, studentTypeScore);
+    });
+  });
+
   let averages = labels.map(l => Number((totalScores[l] / studentCount).toFixed(2)));
   return {labels, averages};
 }
